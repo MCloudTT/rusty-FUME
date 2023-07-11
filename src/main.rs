@@ -12,17 +12,22 @@
 //! - SEND: Send the current chain and either go to Sf or MUTATION state
 //! - Sf: Final State
 //! And this way for Generation Guided Fuzzing:
-//! - S0: Initial State: Goto CONNECT
+//! - S0: Initial State: Goto ADD(CONNECT) state
 //! - CONNECT: Add connect to the current chain and go to S1
 //! - S1: Either add a new packet or go to S2
 //! - S2: Inject/Delete/Mutate the current chain or go to SEND
 //! - SEND: Send the current chain and either go to Sf or S2
+//! Once they get to S2 they behave the same way.
+use rand::thread_rng;
+
 mod markov;
+pub mod mqtt;
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     tracing_subscriber::fmt::init();
     color_eyre::install()?;
     dotenvy::dotenv().ok();
+    let mut rng = thread_rng();
     Ok(())
 }
