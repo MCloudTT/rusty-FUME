@@ -1,0 +1,16 @@
+[package]
+name = "rusty-fume"
+version = "0.1.0"
+authors = ["Nereuxofficial <37740907+Nereuxofficial@users.noreply.github.com>"]
+license = "GPLv3"
+readme = "README.md"
+edition = "2021"
+
+[dependencies]
+color-eyre = "0.6.2"
+tracing = "0.1.37"
+tracing-subscriber = "0.3.17"
+dotenvy = "0.15.7"
+tokio = { version = "1.28.2", features = ["full"] }
+markov = "1.1.0"
+rand = "0.8.5"
