@@ -18,7 +18,12 @@
 //! - S2: Inject/Delete/Mutate the current chain or go to SEND
 //! - SEND: Send the current chain and either go to Sf or S2
 //! Once they get to S2 they behave the same way.
+// TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
+use crate::mqtt::test_connection;
 use rand::thread_rng;
+use std::env::args;
+use tokio::net::TcpStream;
+use tracing::info;
 
 mod markov;
 pub mod mqtt;
@@ -29,5 +34,8 @@ async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     dotenvy::dotenv().ok();
     let mut rng = thread_rng();
+    let mut tcpstream = TcpStream::connect("127.0.0.1:1883").await?;
+    test_connection(&mut tcpstream).await?;
+    info!("Connection established");
     Ok(())
 }
