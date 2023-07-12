@@ -19,6 +19,7 @@ mod mutations;
 use crate::markov::mutations::{delete, inject, swap};
 use crate::markov::Mode::MutationGuided;
 use crate::mqtt::generate_connect_packet;
+use rand::distributions::Standard;
 use rand::prelude::{Distribution, ThreadRng};
 use rand::Rng;
 use std::fmt::Debug;
@@ -42,7 +43,8 @@ pub enum State {
     Sf,
 }
 
-enum Mutations {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Mutations {
     // Inserts bytes into the payload
     Inject,
     // Deletes bytes from the payload
@@ -50,7 +52,7 @@ enum Mutations {
     // Changes bytes in the payload
     Swap,
 }
-impl Distribution<Mutations> for Mutations {
+impl Distribution<Mutations> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Mutations {
         match rng.gen_range(0..3) {
             0 => Mutations::Inject,
@@ -92,7 +94,7 @@ where
             stream,
         }
     }
-    async fn execute(&mut self, mode: Mode, rng: &mut ThreadRng){
+    async fn execute(&mut self, mode: Mode, rng: &mut ThreadRng) {
         while self.state != State::Sf {
             self.next(mode, rng).await;
         }
@@ -100,7 +102,7 @@ where
     async fn next(&mut self, mode: Mode, rng: &mut ThreadRng) {
         match &self.state {
             State::S0 => {
-                if mode == MutationGuided && rng.gen::<f32>() > SEL_FROM_QUEUE {
+                if mode == MutationGuided && rng.gen_range(0f32..1f32) > SEL_FROM_QUEUE {
                     self.state = State::SelectFromQueue;
                 } else {
                     self.state = State::ADD(PacketType::CONNECT);
@@ -120,21 +122,21 @@ where
                 self.state = State::ADDING
             }
             State::ADDING => {
-                if rng.gen::<f32>() < PACKET_CHANCE {
+                if rng.gen_range(0f32..1f32) < PACKET_CHANCE {
                     self.state = State::ADD(rng.gen());
                 } else {
                     self.state = State::MUTATION;
                 }
             }
             State::MUTATION => {
-                if rng.gen::<f32>() < SEND_CHANCE {
+                if rng.gen_range(0f32..1f32) < SEND_CHANCE {
                     self.state = State::SEND;
                 } else {
                     self.state = State::Mutate(rng.gen());
                 }
             }
-            State::Mutate(mutation){
-                match mutation{
+            State::Mutate(mutation) => {
+                match mutation {
                     Mutations::Inject => {
                         inject(&mut self.packet, rng);
                     }
