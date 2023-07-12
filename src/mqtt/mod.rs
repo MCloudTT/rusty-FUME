@@ -1,5 +1,6 @@
 use crate::markov::ByteStream;
-use mqtt::{Encodable, TopicName};
+use mqtt::packet::QoSWithPacketIdentifier;
+use mqtt::{Encodable, TopicFilter, TopicName};
 use rand::prelude::ThreadRng;
 use rand::Rng;
 use std::time::Duration;
@@ -35,7 +36,9 @@ import_packets!(
     UNSUBACK,
     UNSUBSCRIBE
 );
-
+pub(crate) fn generate_auth_packet() -> Vec<u8> {
+    unimplemented!("Auth packet not implemented yet. Switch to MQTT V5")
+}
 pub(crate) fn generate_connect_packet() -> Vec<u8> {
     let mut connect = mqtt::packet::ConnectPacket::new("Hello MQTT Broker");
     connect.set_will(Some((
@@ -44,6 +47,53 @@ pub(crate) fn generate_connect_packet() -> Vec<u8> {
     )));
     let mut packet = Vec::new();
     connect.encode(&mut packet).unwrap();
+    packet
+}
+
+pub(crate) fn generate_publish_packet() -> Vec<u8> {
+    let mut publish = mqtt::packet::PublishPacket::new(
+        TopicName::new("topic").unwrap(),
+        QoSWithPacketIdentifier::Level0,
+        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    );
+    publish.set_retain(true);
+    let mut packet = Vec::new();
+    publish.encode(&mut packet).unwrap();
+    packet
+}
+
+pub(crate) fn generate_subscribe_packet() -> Vec<u8> {
+    let mut subscribe = mqtt::packet::SubscribePacket::new(
+        10,
+        vec![(
+            TopicFilter::new("topic").unwrap(),
+            mqtt::QualityOfService::Level0,
+        )],
+    );
+    let mut packet = Vec::new();
+    subscribe.encode(&mut packet).unwrap();
+    packet
+}
+
+pub(crate) fn generate_unsubscribe_packet() -> Vec<u8> {
+    let mut unsubscribe =
+        mqtt::packet::UnsubscribePacket::new(10, vec![TopicFilter::new("topic").unwrap()]);
+    let mut packet = Vec::new();
+    unsubscribe.encode(&mut packet).unwrap();
+    packet
+}
+
+pub(crate) fn generate_disconnect_packet() -> Vec<u8> {
+    let mut disconnect = mqtt::packet::DisconnectPacket::new();
+    let mut packet = Vec::new();
+    disconnect.encode(&mut packet).unwrap();
+    packet
+}
+
+pub(crate) fn generate_pingreq_packet() -> Vec<u8> {
+    let mut pingreq = mqtt::packet::PingreqPacket::new();
+    let mut packet = Vec::new();
+    pingreq.encode(&mut packet).unwrap();
     packet
 }
 
