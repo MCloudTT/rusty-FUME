@@ -1,5 +1,7 @@
 use crate::markov::ByteStream;
+use mqtt::{Encodable, TopicName};
 use rand::prelude::ThreadRng;
+use rand::Rng;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::join;
@@ -34,8 +36,15 @@ import_packets!(
     UNSUBSCRIBE
 );
 
-pub(crate) fn generate_connect_packet(rng: &mut ThreadRng) -> Vec<u8> {
-    todo!()
+pub(crate) fn generate_connect_packet() -> Vec<u8> {
+    let mut connect = mqtt::packet::ConnectPacket::new("Hello MQTT Broker");
+    connect.set_will(Some((
+        TopicName::new("topic").unwrap(),
+        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    )));
+    let mut packet = Vec::new();
+    connect.encode(&mut packet).unwrap();
+    packet
 }
 
 pub(crate) async fn test_connection(stream: &mut impl ByteStream) -> color_eyre::Result<()> {
@@ -43,7 +52,7 @@ pub(crate) async fn test_connection(stream: &mut impl ByteStream) -> color_eyre:
     for packet in packets {
         stream.write_all(&packet).await?;
         let mut buf = [0; 1024];
-        let _ = timeout(Duration::from_secs(2), stream.read(&mut buf)).await;
+        let _ = timeout(Duration::from_secs(1), stream.read(&mut buf)).await;
         debug!("Packet hex encoded: {:?}", hex::encode(&buf));
     }
     Ok(())
