@@ -21,26 +21,30 @@ use crate::markov::Mode::MutationGuided;
 use crate::mqtt::{
     generate_auth_packet, generate_connect_packet, generate_disconnect_packet,
     generate_pingreq_packet, generate_publish_packet, generate_subscribe_packet,
-    generate_unsubscribe_packet, send_packet, SendResult,
+    generate_unsubscribe_packet, send_packets, SendError,
 };
-use crate::PACKET_QUEUE;
+use crate::{Packets, PACKET_QUEUE};
 use rand::distributions::Standard;
-use rand::prelude::{Distribution, ThreadRng};
+use rand::prelude::Distribution;
 use rand::Rng;
+use rand_xoshiro::Xoshiro256Plus;
+use std::default::Default;
 use std::fmt::Debug;
 use std::process::exit;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tracing::debug;
+use tracing::{debug, error};
 
 const SEL_FROM_QUEUE: f32 = 0.5;
 const PACKET_CHANCE: f32 = 1. / 15.;
 const SEND_CHANCE: f32 = 0.33;
 const BOF_CHANCE: f32 = 0.25;
 const MUT_AFTER_SEND: f32 = 0.5;
+pub const MAX_PACKETS: usize = 10;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum State {
+    #[default]
     S0,
     ADD(PacketType),
     ADDING,
@@ -74,7 +78,6 @@ impl Distribution<Mutations> for Standard {
 pub trait ByteStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
 
 impl<T> ByteStream for T where T: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
-
 pub struct StateMachine<B>
 where
     B: ByteStream,
@@ -82,7 +85,7 @@ where
     // The current state of the state machine
     pub(crate) state: State,
     // The current packet in bytes
-    packet: Vec<u8>,
+    packets: Packets,
     // The current stream, TlsStream TcpStream or WebsocketStream
     stream: B,
 }
@@ -97,26 +100,26 @@ where
 {
     pub(crate) fn new(stream: B) -> Self {
         Self {
-            state: State::S0,
-            // TODO: Do alloc upfront. Remember to adjust the len usage in the mutations
-            packet: Vec::new(),
             stream,
+            state: Default::default(),
+            packets: Packets::new(),
         }
     }
-    pub(crate) async fn execute(&mut self, mode: Mode, rng: &mut ThreadRng) {
+    pub(crate) async fn execute(&mut self, mode: Mode, rng: &mut Xoshiro256Plus) {
         while self.state != State::Sf {
             self.next(mode, rng).await;
             debug!("State: {:?}", self.state);
-            debug!("Packet len {}", self.packet.len());
         }
     }
-    async fn next(&mut self, mode: Mode, rng: &mut ThreadRng) {
+    async fn next(&mut self, mode: Mode, rng: &mut Xoshiro256Plus) {
         match &self.state {
             State::S0 => {
-                if mode == MutationGuided && rng.gen_range(0f32..1f32) > SEL_FROM_QUEUE {
-                    self.state = State::SelectFromQueue;
-                } else {
+                if mode == MutationGuided && rng.gen_range(0f32..1f32) < SEL_FROM_QUEUE
+                    || !self.packets.is_full()
+                {
                     self.state = State::ADD(PacketType::CONNECT);
+                } else {
+                    self.state = State::SelectFromQueue;
                 }
             }
             State::SelectFromQueue => {
@@ -126,29 +129,29 @@ where
                     self.state = State::ADD(PacketType::CONNECT);
                 } else {
                     let packet = queue.0[rng.gen_range(0..queue.0.len())].clone();
-                    self.packet = packet.0;
+                    self.packets = packet;
                     self.state = State::MUTATION;
                 }
             }
             State::ADD(packet_type) => {
                 match packet_type {
                     PacketType::CONNECT => {
-                        self.packet.append(&mut generate_connect_packet());
+                        self.packets.append(&mut generate_connect_packet());
                     }
                     PacketType::PUBLISH => {
-                        self.packet.append(&mut generate_publish_packet());
+                        self.packets.append(&mut generate_publish_packet());
                     }
                     PacketType::SUBSCRIBE => {
-                        self.packet.append(&mut generate_subscribe_packet());
+                        self.packets.append(&mut generate_subscribe_packet());
                     }
                     PacketType::UNSUBSCRIBE => {
-                        self.packet.append(&mut generate_unsubscribe_packet());
+                        self.packets.append(&mut generate_unsubscribe_packet());
                     }
                     PacketType::PINGREQ => {
-                        self.packet.append(&mut generate_pingreq_packet());
+                        self.packets.append(&mut generate_pingreq_packet());
                     }
                     PacketType::DISCONNECT => {
-                        self.packet.append(&mut generate_disconnect_packet());
+                        self.packets.append(&mut generate_disconnect_packet());
                     }
                     _ => unreachable!(),
                 }
@@ -171,31 +174,40 @@ where
             State::Mutate(mutation) => {
                 match mutation {
                     Mutations::Inject(t) => {
-                        inject(&mut self.packet, rng, t);
+                        inject(&mut self.packets, rng, t);
                     }
                     Mutations::Delete => {
-                        delete(&mut self.packet, rng);
+                        delete(&mut self.packets, rng);
                     }
                     Mutations::Swap => {
-                        swap(&mut self.packet, rng);
+                        swap(&mut self.packets, rng);
                     }
                 }
                 self.state = State::MUTATION;
             }
             State::SEND => {
-                let res = send_packet(&mut self.stream, &self.packet).await;
-                match res {
-                    SendResult::Timeout => {
-                        // Write the packet to disk and exit
-                        fs::write("crashing_packet", &self.packet)
-                            .await
-                            .expect("Unable to write file");
-                        exit(-1);
+                let res = send_packets(&mut self.stream, &self.packets).await;
+                if let Err(e) = res {
+                    match e {
+                        SendError::Timeout => {
+                            error!("Timeout");
+                            // Write the last packet to disk hexadecimally
+                            let data = self
+                                .packets
+                                .0
+                                .iter()
+                                .map(|x| hex::encode(x))
+                                .collect::<Vec<String>>()
+                                .join("\n");
+                            let mut file = fs::write("crashing_packet", data)
+                                .await
+                                .expect("Could not write to file");
+                        }
+                        SendError::ReceiveErr => {
+                            error!("Receive error, continuing...")
+                        }
+                        SendError::SendErr => {}
                     }
-                    SendResult::SendErr => {
-                        // TODO: Here we should "ask" if the server has exited. If so it probably crashed and we should exit
-                    }
-                    _ => {}
                 }
                 if rng.gen_range(0f32..1f32) < MUT_AFTER_SEND {
                     self.state = State::Mutate(rng.gen());

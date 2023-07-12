@@ -1,9 +1,14 @@
 use crate::markov::BOF_CHANCE;
+use crate::Packets;
 use rand::distributions::Standard;
-use rand::prelude::{Distribution, ThreadRng};
+use rand::prelude::Distribution;
 use rand::Rng;
+use rand_xoshiro::Xoshiro256Plus;
 
-pub fn inject(packet: &mut Vec<u8>, rng: &mut ThreadRng, inject_type: &InjectType) {
+pub fn inject(packets: &mut Packets, rng: &mut Xoshiro256Plus, inject_type: &InjectType) {
+    let packets_size = packets.size();
+    debug_assert!(packets_size > 0, "Packet size should be greater than 0");
+    let packet = packets.0.get_mut(rng.gen_range(0..packets_size)).unwrap();
     match inject_type {
         InjectType::Single => inject_single(packet, rng),
         InjectType::BOF => inject_bof(packet, rng),
@@ -26,26 +31,31 @@ impl Distribution<InjectType> for Standard {
     }
 }
 
-fn inject_bof(packet: &mut Vec<u8>, rng: &mut ThreadRng) {
+fn inject_bof(packet: &mut Vec<u8>, rng: &mut Xoshiro256Plus) {
     let idx = rng.gen_range(0..packet.len());
-    let byte_length = rng.gen_range(packet.len()..packet.len() * 2);
+    // To fight big packets
+    let byte_length = 10000 / packet.len();
     let mut bytes = vec![0; byte_length];
     rng.fill(&mut bytes[..]);
     packet.splice(idx..idx, bytes);
 }
 
-fn inject_single(packet: &mut Vec<u8>, rng: &mut ThreadRng) {
+fn inject_single(packet: &mut Vec<u8>, rng: &mut Xoshiro256Plus) {
     let idx = rng.gen_range(0..packet.len());
     let byte = rng.gen::<u8>();
     packet.insert(idx, byte);
 }
 
-pub fn delete(packet: &mut Vec<u8>, rng: &mut ThreadRng) {
+pub fn delete(packets: &mut Packets, rng: &mut Xoshiro256Plus) {
+    let packets_size = packets.size();
+    let packet = packets.0.get_mut(rng.gen_range(0..packets_size)).unwrap();
     let idx = rng.gen_range(0..packet.len());
     packet.remove(idx);
 }
 
-pub fn swap(packet: &mut Vec<u8>, rng: &mut ThreadRng) {
+pub fn swap(packets: &mut Packets, rng: &mut Xoshiro256Plus) {
+    let packets_size = packets.size();
+    let packet = packets.0.get_mut(rng.gen_range(0..packets_size)).unwrap();
     let idx = rng.gen_range(0..packet.len());
     let byte = rng.gen::<u8>();
     packet[idx] = byte;

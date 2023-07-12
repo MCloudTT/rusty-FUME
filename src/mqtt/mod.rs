@@ -1,4 +1,5 @@
 use crate::markov::ByteStream;
+use crate::Packets;
 use mqtt::packet::QoSWithPacketIdentifier;
 use mqtt::{Encodable, TopicFilter, TopicName};
 use rand::prelude::ThreadRng;
@@ -8,7 +9,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::join;
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::time::timeout;
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 /// Macro for importing packets. TODO: They need to be converted from hex to bytes
 #[macro_export]
 macro_rules! import_packets{
@@ -98,21 +99,16 @@ pub(crate) fn generate_pingreq_packet() -> Vec<u8> {
 }
 
 pub(crate) async fn test_connection(stream: &mut impl ByteStream) -> color_eyre::Result<()> {
-    let packets = CONNECT.split('\n').map(|x| hex::decode(x).unwrap());
-    for packet in packets {
-        stream.write_all(&packet).await?;
-        let mut buf = [0; 1024];
-        let _ = timeout(Duration::from_secs(1), stream.read(&mut buf)).await;
-        debug!("Received Packet hex encoded: {:?}", hex::encode(&buf));
-    }
+    stream
+        .write_all(generate_connect_packet().as_slice())
+        .await?;
+    let mut buf = [0; 1024];
+    let _ = timeout(Duration::from_secs(1), stream.read(&mut buf)).await;
+    debug!("Received Packet hex encoded: {:?}", hex::encode(&buf));
     Ok(())
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum SendResult {
-    // The received packet is a new behavior
-    NewBehaviour,
-    // The received packet matches a known behavior
-    KnownBehaviour,
+pub(crate) enum SendError {
     // Probably a DOS discovered. The server didn't respond in time
     Timeout,
     // The server crashed. As the connection is closed or similar
@@ -120,8 +116,21 @@ pub(crate) enum SendResult {
     // We couldn't send the packet. A previous packet might have crashed the server
     SendErr,
 }
-#[must_use]
-pub(crate) async fn send_packet(stream: &mut impl ByteStream, packet: &[u8]) -> SendResult {
+
+pub(crate) async fn send_packets(
+    stream: &mut impl ByteStream,
+    packets: &Packets,
+) -> Result<(), SendError> {
+    for packet in &packets.0 {
+        send_packet(stream, packet.as_slice()).await?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn send_packet(
+    stream: &mut impl ByteStream,
+    packet: &[u8],
+) -> Result<(), SendError> {
     let write_result = timeout(Duration::from_millis(100), stream.write_all(packet)).await;
     match write_result {
         Ok(Ok(_)) => (),
@@ -130,7 +139,7 @@ pub(crate) async fn send_packet(stream: &mut impl ByteStream, packet: &[u8]) -> 
         }
         Ok(Err(e)) => {
             error!("Send error: {:?}", e);
-            return SendResult::SendErr;
+            return Err(SendError::SendErr);
         }
     }
     let mut buf = [0; 1024];
@@ -138,17 +147,17 @@ pub(crate) async fn send_packet(stream: &mut impl ByteStream, packet: &[u8]) -> 
     match res {
         Ok(Ok(p)) => {
             // TODO: Check if it matches a known packet we received or is a new behavior and if it is add it to the corpus
-            debug!("Received Packet hex encoded: {:?}", hex::encode(&buf));
-            SendResult::NewBehaviour
+            trace!("Received Packet hex encoded: {:?}", hex::encode(&buf));
+            Ok(())
         }
         Err(t) => {
             error!("Timeout: {:?}", t);
             // TODO: Retry sending the packet
-            SendResult::Timeout
+            Err(SendError::Timeout)
         }
         Ok(Err(e)) => {
             error!("Receive error: {:?}", e);
-            SendResult::ReceiveErr
+            Err(SendError::ReceiveErr)
         }
     }
 }
