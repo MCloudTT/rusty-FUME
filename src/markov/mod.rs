@@ -18,7 +18,12 @@ mod mutations;
 
 use crate::markov::mutations::{delete, inject, swap};
 use crate::markov::Mode::MutationGuided;
-use crate::mqtt::generate_connect_packet;
+use crate::mqtt::{
+    generate_auth_packet, generate_connect_packet, generate_disconnect_packet,
+    generate_pingreq_packet, generate_publish_packet, generate_subscribe_packet,
+    generate_unsubscribe_packet,
+};
+use crate::PACKET_QUEUE;
 use rand::distributions::Standard;
 use rand::prelude::{Distribution, ThreadRng};
 use rand::Rng;
@@ -110,14 +115,36 @@ where
             }
             State::SelectFromQueue => {
                 // Maybe we should use a priority queue in-memory here instead of storing on disk(overhead). Should be measured in the future.
-                todo!()
+                let queue = PACKET_QUEUE.get().unwrap().read().await;
+                if queue.0.is_empty() {
+                    self.state = State::ADD(PacketType::CONNECT);
+                } else {
+                    let packet = queue.0[rng.gen_range(0..queue.0.len())].clone();
+                    self.packet = packet.0;
+                    self.state = State::MUTATION;
+                }
             }
             State::ADD(packet_type) => {
                 match packet_type {
                     PacketType::CONNECT => {
-                        self.packet = generate_connect_packet(rng);
+                        self.packet.append(&mut generate_connect_packet());
                     }
-                    _ => todo!(),
+                    PacketType::PUBLISH => {
+                        self.packet.append(&mut generate_publish_packet());
+                    }
+                    PacketType::SUBSCRIBE => {
+                        self.packet.append(&mut generate_subscribe_packet());
+                    }
+                    PacketType::UNSUBSCRIBE => {
+                        self.packet.append(&mut generate_unsubscribe_packet());
+                    }
+                    PacketType::PINGREQ => {
+                        self.packet.append(&mut generate_pingreq_packet());
+                    }
+                    PacketType::DISCONNECT => {
+                        self.packet.append(&mut generate_disconnect_packet());
+                    }
+                    _ => unreachable!(),
                 }
                 self.state = State::ADDING
             }
@@ -187,23 +214,13 @@ pub enum PacketType {
 // Implement a distribution for the packet types
 impl Distribution<PacketType> for rand::distributions::Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PacketType {
-        match rng.gen_range(0..=15) {
-            0 => PacketType::AUTH,
-            1 => PacketType::CONNACK,
-            2 => PacketType::CONNECT,
-            3 => PacketType::DISCONNECT,
+        match rng.gen_range(0..6) {
+            0 => PacketType::CONNECT,
+            1 => PacketType::PUBLISH,
+            2 => PacketType::SUBSCRIBE,
+            3 => PacketType::UNSUBSCRIBE,
             4 => PacketType::PINGREQ,
-            5 => PacketType::PINGRESP,
-            6 => PacketType::PUBACK,
-            7 => PacketType::PUBCOMP,
-            8 => PacketType::PUBLISH,
-            9 => PacketType::PUBREC,
-            10 => PacketType::PUBREL,
-            11 => PacketType::RESERVED,
-            12 => PacketType::SUBACK,
-            13 => PacketType::SUBSCRIBE,
-            14 => PacketType::UNSUBACK,
-            15 => PacketType::UNSUBSCRIBE,
+            5 => PacketType::DISCONNECT,
             _ => unreachable!(),
         }
     }

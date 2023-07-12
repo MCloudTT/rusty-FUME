@@ -22,11 +22,19 @@
 use crate::mqtt::test_connection;
 use rand::thread_rng;
 use std::env::args;
+use std::sync::{Arc, OnceLock};
 use tokio::net::TcpStream;
+use tokio::sync::RwLock;
 use tracing::info;
 
 mod markov;
 pub mod mqtt;
+
+static PACKET_QUEUE: OnceLock<Arc<RwLock<PacketQueue>>> = OnceLock::new();
+#[derive(Debug, PartialEq, Eq, Hash, Default, Clone)]
+struct Packet(Vec<u8>);
+#[derive(Debug, PartialEq, Eq, Hash, Default)]
+struct PacketQueue(Vec<Packet>);
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
@@ -37,5 +45,8 @@ async fn main() -> color_eyre::Result<()> {
     let mut tcpstream = TcpStream::connect("127.0.0.1:1883").await?;
     test_connection(&mut tcpstream).await?;
     info!("Connection established");
+    PACKET_QUEUE
+        .set(Arc::new(RwLock::new(PacketQueue::default())))
+        .unwrap();
     Ok(())
 }
