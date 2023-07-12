@@ -19,6 +19,7 @@
 //! - SEND: Send the current chain and either go to Sf or S2
 //! Once they get to S2 they behave the same way.
 // TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
+use crate::markov::{Mode, StateMachine};
 use crate::mqtt::test_connection;
 use rand::thread_rng;
 use std::env::args;
@@ -29,6 +30,8 @@ use tracing::info;
 
 mod markov;
 pub mod mqtt;
+mod process_monitor;
+mod runtime;
 
 static PACKET_QUEUE: OnceLock<Arc<RwLock<PacketQueue>>> = OnceLock::new();
 #[derive(Debug, PartialEq, Eq, Hash, Default, Clone)]
@@ -48,5 +51,13 @@ async fn main() -> color_eyre::Result<()> {
     PACKET_QUEUE
         .set(Arc::new(RwLock::new(PacketQueue::default())))
         .unwrap();
+    info!("Starting fuzzing!");
+    loop {
+        let mut new_tcpstream = TcpStream::connect("127.0.0.1:1883").await?;
+        let mut state_machine = StateMachine::new(new_tcpstream);
+        state_machine.execute(Mode::MutationGuided, &mut rng).await;
+        state_machine.state = markov::State::S0;
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    }
     Ok(())
 }

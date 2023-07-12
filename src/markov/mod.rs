@@ -16,19 +16,22 @@
 //! Once they get to S2 they behave the same way.
 mod mutations;
 
-use crate::markov::mutations::{delete, inject, swap};
+use crate::markov::mutations::{delete, inject, swap, InjectType};
 use crate::markov::Mode::MutationGuided;
 use crate::mqtt::{
     generate_auth_packet, generate_connect_packet, generate_disconnect_packet,
     generate_pingreq_packet, generate_publish_packet, generate_subscribe_packet,
-    generate_unsubscribe_packet,
+    generate_unsubscribe_packet, send_packet, SendResult,
 };
 use crate::PACKET_QUEUE;
 use rand::distributions::Standard;
 use rand::prelude::{Distribution, ThreadRng};
 use rand::Rng;
 use std::fmt::Debug;
+use std::process::exit;
+use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::debug;
 
 const SEL_FROM_QUEUE: f32 = 0.5;
 const PACKET_CHANCE: f32 = 1. / 15.;
@@ -51,7 +54,7 @@ pub enum State {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Mutations {
     // Inserts bytes into the payload
-    Inject,
+    Inject(InjectType),
     // Deletes bytes from the payload
     Delete,
     // Changes bytes in the payload
@@ -60,7 +63,7 @@ pub enum Mutations {
 impl Distribution<Mutations> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Mutations {
         match rng.gen_range(0..3) {
-            0 => Mutations::Inject,
+            0 => Mutations::Inject(rng.gen()),
             1 => Mutations::Delete,
             2 => Mutations::Swap,
             _ => unreachable!(),
@@ -72,19 +75,19 @@ pub trait ByteStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
 
 impl<T> ByteStream for T where T: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
 
-struct StateMachine<B>
+pub struct StateMachine<B>
 where
     B: ByteStream,
 {
     // The current state of the state machine
-    state: State,
+    pub(crate) state: State,
     // The current packet in bytes
     packet: Vec<u8>,
     // The current stream, TlsStream TcpStream or WebsocketStream
     stream: B,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-enum Mode {
+pub enum Mode {
     MutationGuided,
     GenerationGuided,
 }
@@ -92,16 +95,19 @@ impl<B> StateMachine<B>
 where
     B: ByteStream,
 {
-    fn new(stream: B) -> Self {
+    pub(crate) fn new(stream: B) -> Self {
         Self {
             state: State::S0,
+            // TODO: Do alloc upfront. Remember to adjust the len usage in the mutations
             packet: Vec::new(),
             stream,
         }
     }
-    async fn execute(&mut self, mode: Mode, rng: &mut ThreadRng) {
+    pub(crate) async fn execute(&mut self, mode: Mode, rng: &mut ThreadRng) {
         while self.state != State::Sf {
             self.next(mode, rng).await;
+            debug!("State: {:?}", self.state);
+            debug!("Packet len {}", self.packet.len());
         }
     }
     async fn next(&mut self, mode: Mode, rng: &mut ThreadRng) {
@@ -164,8 +170,8 @@ where
             }
             State::Mutate(mutation) => {
                 match mutation {
-                    Mutations::Inject => {
-                        inject(&mut self.packet, rng);
+                    Mutations::Inject(t) => {
+                        inject(&mut self.packet, rng, t);
                     }
                     Mutations::Delete => {
                         delete(&mut self.packet, rng);
@@ -177,7 +183,25 @@ where
                 self.state = State::MUTATION;
             }
             State::SEND => {
-                self.stream.write_all(&self.packet).await.unwrap();
+                let res = send_packet(&mut self.stream, &self.packet).await;
+                match res {
+                    SendResult::Timeout => {
+                        // Write the packet to disk and exit
+                        fs::write("crashing_packet", &self.packet)
+                            .await
+                            .expect("Unable to write file");
+                        exit(-1);
+                    }
+                    SendResult::SendErr => {
+                        // TODO: Here we should "ask" if the server has exited. If so it probably crashed and we should exit
+                    }
+                    _ => {}
+                }
+                if rng.gen_range(0f32..1f32) < MUT_AFTER_SEND {
+                    self.state = State::Mutate(rng.gen());
+                } else {
+                    self.state = State::ADD(rng.gen());
+                }
             }
             _ => todo!(),
         }

@@ -8,7 +8,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::join;
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::time::timeout;
-use tracing::debug;
+use tracing::{debug, error};
 /// Macro for importing packets. TODO: They need to be converted from hex to bytes
 #[macro_export]
 macro_rules! import_packets{
@@ -103,7 +103,7 @@ pub(crate) async fn test_connection(stream: &mut impl ByteStream) -> color_eyre:
         stream.write_all(&packet).await?;
         let mut buf = [0; 1024];
         let _ = timeout(Duration::from_secs(1), stream.read(&mut buf)).await;
-        debug!("Packet hex encoded: {:?}", hex::encode(&buf));
+        debug!("Received Packet hex encoded: {:?}", hex::encode(&buf));
     }
     Ok(())
 }
@@ -120,26 +120,34 @@ pub(crate) enum SendResult {
     // We couldn't send the packet. A previous packet might have crashed the server
     SendErr,
 }
+#[must_use]
 pub(crate) async fn send_packet(stream: &mut impl ByteStream, packet: &[u8]) -> SendResult {
-    let write_result = stream.write_all(packet).await;
-    if write_result.is_err() {
-        return SendResult::SendErr;
+    let write_result = timeout(Duration::from_millis(100), stream.write_all(packet)).await;
+    match write_result {
+        Ok(Ok(_)) => (),
+        Err(t) => {
+            error!("Timeout: {:?}", t);
+        }
+        Ok(Err(e)) => {
+            error!("Send error: {:?}", e);
+            return SendResult::SendErr;
+        }
     }
     let mut buf = [0; 1024];
     let res = timeout(Duration::from_millis(100), stream.read(&mut buf)).await;
     match res {
         Ok(Ok(p)) => {
             // TODO: Check if it matches a known packet we received or is a new behavior and if it is add it to the corpus
-            debug!("Packet hex encoded: {:?}", hex::encode(&buf));
+            debug!("Received Packet hex encoded: {:?}", hex::encode(&buf));
             SendResult::NewBehaviour
         }
         Err(t) => {
-            debug!("Timeout: {:?}", t);
+            error!("Timeout: {:?}", t);
             // TODO: Retry sending the packet
             SendResult::Timeout
         }
         Ok(Err(e)) => {
-            debug!("Receive error: {:?}", e);
+            error!("Receive error: {:?}", e);
             SendResult::ReceiveErr
         }
     }
