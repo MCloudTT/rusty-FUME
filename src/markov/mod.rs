@@ -33,7 +33,8 @@ use std::fmt::Debug;
 use std::process::exit;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tracing::{debug, error};
+use tracing::field::debug;
+use tracing::{debug, error, trace};
 
 const SEL_FROM_QUEUE: f32 = 0.5;
 const PACKET_CHANCE: f32 = 1. / 15.;
@@ -204,15 +205,19 @@ where
                                 .expect("Could not write to file");
                         }
                         SendError::ReceiveErr => {
-                            error!("Receive error, continuing...")
+                            error!("Receive error, probably disconnected by the broker...")
                         }
-                        SendError::SendErr => {}
+                        SendError::SendErr => {
+                            trace!("Send error, probably disconnected by the broker...")
+                        }
                     }
-                }
-                if rng.gen_range(0f32..1f32) < MUT_AFTER_SEND {
-                    self.state = State::Mutate(rng.gen());
                 } else {
-                    self.state = State::ADD(rng.gen());
+                    debug!("Sent packet successfully");
+                }
+                if rng.gen_range(0f32..1f32) > MUT_AFTER_SEND || res.is_err() {
+                    self.state = State::Sf;
+                } else {
+                    self.state = State::Mutate(rng.gen());
                 }
             }
             _ => todo!(),
