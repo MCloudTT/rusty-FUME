@@ -26,7 +26,6 @@ use crate::mqtt::test_connection;
 use crate::process_monitor::start_supervised_process;
 use rand::{thread_rng, SeedableRng};
 use rand_xoshiro::Xoshiro256Plus;
-use std::env::args;
 use std::sync::{Arc, OnceLock};
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
@@ -72,38 +71,25 @@ async fn main() -> color_eyre::Result<()> {
     let mut rng = thread_rng();
     start_supervised_process().await?;
     // TODO: Make the IP configurable via clap
-    let mut tcpstream = TcpStream::connect("127.0.0.1:1883").await?;
+    let address = "127.0.0.1:1883";
+    let mut tcpstream = TcpStream::connect(address).await?;
     test_connection(&mut tcpstream).await?;
     info!("Connection established");
     PACKET_QUEUE
         .set(Arc::new(RwLock::new(PacketQueue::default())))
         .unwrap();
     info!("Starting fuzzing!");
-    for i in 0..10 {
+    for i in 0..100 {
         task::spawn(async move {
-            // TODO: Switch to OsRng in order for this to work
             loop {
-                let mut new_tcpstream = TcpStream::connect("127.0.0.1:1883").await.unwrap();
+                let mut new_tcpstream = TcpStream::connect(address.clone()).await.unwrap();
                 let mut state_machine = StateMachine::new(new_tcpstream);
                 state_machine
                     .execute(Mode::MutationGuided, &mut Xoshiro256Plus::seed_from_u64(i))
                     .await;
-                state_machine.state = markov::State::S0;
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             }
         });
     }
-    loop {
-        let mut new_tcpstream = TcpStream::connect("127.0.0.1:1883").await?;
-        let mut state_machine = StateMachine::new(new_tcpstream);
-        state_machine
-            .execute(
-                Mode::MutationGuided,
-                &mut Xoshiro256Plus::seed_from_u64(234),
-            )
-            .await;
-        state_machine.state = markov::State::S0;
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-    }
+    loop {}
     Ok(())
 }
