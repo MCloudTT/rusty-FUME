@@ -107,7 +107,7 @@ pub(crate) async fn test_connection(stream: &mut impl ByteStream) -> color_eyre:
     debug!("Received Packet hex encoded: {:?}", hex::encode(&buf));
     Ok(())
 }
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum SendError {
     // Probably a DOS discovered. The server didn't respond in time
     Timeout,
@@ -131,19 +131,19 @@ pub(crate) async fn send_packet(
     stream: &mut impl ByteStream,
     packet: &[u8],
 ) -> Result<(), SendError> {
-    let write_result = timeout(Duration::from_millis(100), stream.write_all(packet)).await;
+    let write_result = timeout(Duration::from_millis(500), stream.write_all(packet)).await;
     match write_result {
         Ok(Ok(_)) => (),
         Err(t) => {
             error!("Timeout: {:?}", t);
         }
         Ok(Err(e)) => {
-            error!("Send error: {:?}", e);
+            debug!("Send error: {:?}", e);
             return Err(SendError::SendErr);
         }
     }
     let mut buf = [0; 1024];
-    let res = timeout(Duration::from_millis(100), stream.read(&mut buf)).await;
+    let res = timeout(Duration::from_millis(500), stream.read(&mut buf)).await;
     match res {
         Ok(Ok(p)) => {
             // TODO: Check if it matches a known packet we received or is a new behavior and if it is add it to the corpus
