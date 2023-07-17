@@ -27,7 +27,7 @@ use crate::mqtt::{send_packet, test_connection};
 use crate::process_monitor::start_supervised_process;
 use crate::runtime::run_thread;
 use clap::{Args, Parser, Subcommand};
-use rand::{thread_rng, SeedableRng};
+use rand::{thread_rng, Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256Plus;
 use std::sync::{Arc, OnceLock};
 use tokio::net::TcpStream;
@@ -121,9 +121,10 @@ async fn main() -> color_eyre::Result<()> {
                 .set(Arc::new(RwLock::new(PacketQueue::default())))
                 .unwrap();
             info!("Starting fuzzing!");
-            for i in 0..threads {
+            let mut rng = thread_rng();
+            for i in 0u64..threads {
                 let receiver_clone = subscribers.pop().unwrap();
-                run_thread(i, receiver_clone, address.clone());
+                run_thread(i.wrapping_add(rng.gen()), receiver_clone, address.clone());
             }
             loop {}
         }

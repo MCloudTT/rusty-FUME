@@ -27,7 +27,7 @@ pub(crate) fn run_thread(
             state_machine
                 .execute(
                     Mode::MutationGuided,
-                    &mut Xoshiro256Plus::seed_from_u64(2000 + i + counter),
+                    &mut Xoshiro256Plus::seed_from_u64(i + counter),
                 )
                 .await;
             last_packets = state_machine.previous_packets.clone();
