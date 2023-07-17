@@ -87,6 +87,8 @@ where
     pub(crate) state: State,
     // The current packet in bytes
     packets: Packets,
+    // Previous packets. Useful for dumping the packets to disk(For tracking errors)
+    pub previous_packets: Vec<Packets>,
     // The current stream, TlsStream TcpStream or WebsocketStream
     stream: B,
 }
@@ -104,6 +106,7 @@ where
             stream,
             state: Default::default(),
             packets: Packets::new(),
+            previous_packets: Vec::new(),
         }
     }
     pub(crate) async fn execute(&mut self, mode: Mode, rng: &mut Xoshiro256Plus) {
@@ -187,6 +190,7 @@ where
                 self.state = State::MUTATION;
             }
             State::SEND => {
+                self.previous_packets.push(self.packets.clone());
                 let res = send_packets(&mut self.stream, &self.packets).await;
                 if let Err(e) = res {
                     match e {
