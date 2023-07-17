@@ -31,6 +31,7 @@ use rand::{thread_rng, SeedableRng};
 use rand_xoshiro::Xoshiro256Plus;
 use std::sync::{Arc, OnceLock};
 use tokio::net::TcpStream;
+use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::RwLock;
 use tokio::{fs, task};
 use tracing::{debug, info, trace};
@@ -112,8 +113,8 @@ async fn main() -> color_eyre::Result<()> {
             }
             start_supervised_process(sender).await?;
             // TODO: Make the IP configurable via clap or similar
-            let address = "127.0.0.1:1883";
-            let mut tcpstream = TcpStream::connect(address).await?;
+            let address = cli.target.clone();
+            let mut tcpstream = TcpStream::connect(&address).await?;
             test_connection(&mut tcpstream).await?;
             info!("Connection established");
             PACKET_QUEUE
@@ -122,7 +123,7 @@ async fn main() -> color_eyre::Result<()> {
             info!("Starting fuzzing!");
             for i in 0..threads {
                 let receiver_clone = subscribers.pop().unwrap();
-                run_thread(i, receiver_clone, address);
+                run_thread(i, receiver_clone, address.clone());
             }
             loop {}
         }
@@ -139,19 +140,17 @@ async fn main() -> color_eyre::Result<()> {
             while let Some(entry) = files.next_entry().await? {
                 let path = entry.path();
                 let path_str = path.to_string_lossy().to_string();
-                trace!("Found file: {:?}", path_str);
                 if path_str.starts_with("./fuzzing_") && path_str.ends_with(".txt") {
                     filtered_files.push(path_str);
                 }
             }
-            info!("Found {} files", filtered_files.len());
-            let (sender, receiver) = tokio::sync::broadcast::channel(1);
+            trace!("Found {} files", filtered_files.len());
+            let (sender, receiver) = tokio::sync::broadcast::channel::<()>(1);
             start_supervised_process(sender).await?;
             let mut tcpstream = TcpStream::connect(&cli.target).await?;
             test_connection(&mut tcpstream).await?;
-            info!("Connection established");
+            debug!("Connection established");
             let mut all_packets: Vec<Packets> = vec![];
-            // TODO: Send packet chains instead of single packets
             for file in filtered_files {
                 let content = fs::read_to_string(file).await?;
                 let mut packets = Packets::new();
@@ -161,8 +160,7 @@ async fn main() -> color_eyre::Result<()> {
                 }
                 all_packets.push(packets);
             }
-            debug!("Collected {} packet chains", all_packets.len());
-            info!("Starting replay!");
+            info!("Starting replay with {} packet chains!", all_packets.len());
             for packets in &all_packets {
                 let mut stream = TcpStream::connect(&cli.target).await?;
                 for packet in &packets.0 {
@@ -174,6 +172,7 @@ async fn main() -> color_eyre::Result<()> {
                     break;
                 }
             }
+            info!("No crashing packet chain found!");
         }
     }
     Ok(())

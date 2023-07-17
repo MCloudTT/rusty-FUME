@@ -131,7 +131,7 @@ pub(crate) async fn send_packet(
     stream: &mut impl ByteStream,
     packet: &[u8],
 ) -> Result<(), SendError> {
-    let write_result = timeout(Duration::from_millis(500), stream.write_all(packet)).await;
+    let write_result = timeout(Duration::from_millis(100), stream.write_all(packet)).await;
     match write_result {
         Ok(Ok(_)) => (),
         Err(t) => {
@@ -143,7 +143,7 @@ pub(crate) async fn send_packet(
         }
     }
     let mut buf = [0; 1024];
-    let res = timeout(Duration::from_millis(500), stream.read(&mut buf)).await;
+    let res = timeout(Duration::from_millis(100), stream.read(&mut buf)).await;
     match res {
         Ok(Ok(p)) => {
             // TODO: Check if it matches a known packet we received or is a new behavior and if it is add it to the corpus

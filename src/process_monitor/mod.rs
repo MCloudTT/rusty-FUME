@@ -4,7 +4,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::broadcast::Sender;
 use tokio::time::sleep;
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 
 // TODO: How do the tasks ask if the server has exited? And better yet, how do they get the message back?
 // TODO: Also, how do the tasks know when it has caused new stdout/stderr output?
@@ -28,6 +28,8 @@ pub async fn start_supervised_process(sender: Sender<()>) -> color_eyre::Result<
         loop {
             let last_stdout = stdout_reader.next_line().await.unwrap();
             let last_stderr = stderr_reader.next_line().await.unwrap();
+            trace!("Last stdout: {:?}", last_stdout);
+            trace!("Last stderr: {:?}", last_stderr);
             let status = child.try_wait();
             if let Ok(Some(status)) = status {
                 sender.send(()).unwrap();
