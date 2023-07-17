@@ -1,4 +1,3 @@
-use crate::markov::BOF_CHANCE;
 use crate::Packets;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
