@@ -2,6 +2,7 @@ use color_eyre::owo_colors::OwoColorize;
 use std::process::exit;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
+use tokio::sync::broadcast::Sender;
 use tokio::time::sleep;
 use tracing::{debug, info};
 
@@ -10,7 +11,7 @@ use tracing::{debug, info};
 // TODO: Allow the user to specify where to write the stdout/stderr of the monitored process. Maybe gzip compress it?
 // TODO: Ask threads what their last packets were and dump it.
 /// Start the broker process and monitor it. If it crashes, we stop our execution.
-pub async fn start_supervised_process() -> color_eyre::Result<()> {
+pub async fn start_supervised_process(sender: Sender<()>) -> color_eyre::Result<()> {
     let mut child = Command::new("nanomq")
         .arg("start")
         .stdout(std::process::Stdio::piped())
@@ -29,6 +30,8 @@ pub async fn start_supervised_process() -> color_eyre::Result<()> {
             let last_stderr = stderr_reader.next_line().await.unwrap();
             let status = child.try_wait();
             if let Ok(Some(status)) = status {
+                sender.send(()).unwrap();
+                sleep(tokio::time::Duration::from_secs(5)).await;
                 info!(
                     "exited with: {}. Here is the last stdout and stderr",
                     status
