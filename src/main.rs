@@ -19,18 +19,21 @@
 //! - SEND: Send the current chain and either go to Sf or S2
 //! Once they get to S2 they behave the same way.
 use std::cmp::min;
+use std::fmt::Display;
 // TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
 // FIXME: Fix ranges...
 use crate::markov::{Mode, StateMachine, MAX_PACKETS};
-use crate::mqtt::test_connection;
+use crate::mqtt::{send_packet, test_connection};
 use crate::process_monitor::start_supervised_process;
+use crate::runtime::run_thread;
+use clap::{Args, Parser, Subcommand};
 use rand::{thread_rng, SeedableRng};
 use rand_xoshiro::Xoshiro256Plus;
 use std::sync::{Arc, OnceLock};
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
-use tokio::task;
-use tracing::info;
+use tokio::{fs, task};
+use tracing::{debug, info, trace};
 
 mod markov;
 pub mod mqtt;
@@ -40,6 +43,19 @@ mod runtime;
 static PACKET_QUEUE: OnceLock<Arc<RwLock<PacketQueue>>> = OnceLock::new();
 #[derive(Debug, PartialEq, Eq, Hash, Default, Clone)]
 pub struct Packets([Vec<u8>; MAX_PACKETS]);
+impl Display for Packets {
+    // Hex dump the packets
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::new();
+        for i in 0..MAX_PACKETS {
+            if !self.0[i].is_empty() {
+                s.push_str(hex::encode(&self.0[i]).as_str());
+                s.push('\n');
+            }
+        }
+        write!(f, "{}", s)
+    }
+}
 impl Packets {
     pub fn append(&mut self, packet: &mut Vec<u8>) {
         // Search the first free slot and insert it there
@@ -63,33 +79,102 @@ impl Packets {
 #[derive(Debug, PartialEq, Eq, Hash, Default)]
 struct PacketQueue(Vec<Packets>);
 
+#[derive(Parser, Debug)]
+#[command(author, version, about)]
+struct Cli {
+    #[command(subcommand)]
+    subcommand: SubCommands,
+    #[arg(short, long, default_value = "127.0.0.1:1883")]
+    target: String,
+}
+
+#[derive(Subcommand, Debug)]
+enum SubCommands {
+    // TODO: Do Fuzzing args like threads, chances etc
+    Fuzz,
+    Replay,
+}
+// TODO: Main has gotten too complicated, refactor it to runtime/mod.rs
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     tracing_subscriber::fmt::init();
     color_eyre::install()?;
     dotenvy::dotenv().ok();
-    let mut rng = thread_rng();
-    start_supervised_process().await?;
-    // TODO: Make the IP configurable via clap
-    let address = "127.0.0.1:1883";
-    let mut tcpstream = TcpStream::connect(address).await?;
-    test_connection(&mut tcpstream).await?;
-    info!("Connection established");
-    PACKET_QUEUE
-        .set(Arc::new(RwLock::new(PacketQueue::default())))
-        .unwrap();
-    info!("Starting fuzzing!");
-    for i in 0..100 {
-        task::spawn(async move {
-            loop {
-                let mut new_tcpstream = TcpStream::connect(address.clone()).await.unwrap();
-                let mut state_machine = StateMachine::new(new_tcpstream);
-                state_machine
-                    .execute(Mode::MutationGuided, &mut Xoshiro256Plus::seed_from_u64(i))
-                    .await;
+    let cli = Cli::parse();
+    match &cli.subcommand {
+        SubCommands::Fuzz => {
+            let threads = 100;
+            // This receiver is necessary to dump the packets once the broker is stopped
+            let (sender, _) = tokio::sync::broadcast::channel(1);
+            let mut subscribers = vec![];
+            for _ in 0..threads {
+                subscribers.push(sender.subscribe());
             }
-        });
+            start_supervised_process(sender).await?;
+            // TODO: Make the IP configurable via clap or similar
+            let address = "127.0.0.1:1883";
+            let mut tcpstream = TcpStream::connect(address).await?;
+            test_connection(&mut tcpstream).await?;
+            info!("Connection established");
+            PACKET_QUEUE
+                .set(Arc::new(RwLock::new(PacketQueue::default())))
+                .unwrap();
+            info!("Starting fuzzing!");
+            for i in 0..threads {
+                let receiver_clone = subscribers.pop().unwrap();
+                run_thread(i, receiver_clone, address);
+            }
+            loop {}
+        }
+        SubCommands::Replay => {
+            // Iterate through all fuzzing_{}.txt files and replay them one after another
+            let mut files = fs::read_dir("./").await?;
+            let mut filtered_files = vec![];
+            trace!(
+                "Found files: {:?} in folder {:?}",
+                files,
+                std::env::current_dir()
+            );
+
+            while let Some(entry) = files.next_entry().await? {
+                let path = entry.path();
+                let path_str = path.to_string_lossy().to_string();
+                trace!("Found file: {:?}", path_str);
+                if path_str.starts_with("./fuzzing_") && path_str.ends_with(".txt") {
+                    filtered_files.push(path_str);
+                }
+            }
+            info!("Found {} files", filtered_files.len());
+            let (sender, receiver) = tokio::sync::broadcast::channel(1);
+            start_supervised_process(sender).await?;
+            let mut tcpstream = TcpStream::connect(&cli.target).await?;
+            test_connection(&mut tcpstream).await?;
+            info!("Connection established");
+            let mut all_packets: Vec<Packets> = vec![];
+            // TODO: Send packet chains instead of single packets
+            for file in filtered_files {
+                let content = fs::read_to_string(file).await?;
+                let mut packets = Packets::new();
+                for line in content.lines() {
+                    let packet = hex::decode(line)?;
+                    packets.append(&mut packet.clone());
+                }
+                all_packets.push(packets);
+            }
+            debug!("Collected {} packet chains", all_packets.len());
+            info!("Starting replay!");
+            for packets in &all_packets {
+                let mut stream = TcpStream::connect(&cli.target).await?;
+                for packet in &packets.0 {
+                    let _ = send_packet(&mut stream, &packet).await;
+                }
+                if !receiver.is_empty() {
+                    info!("Found crashing packet chain, dumping to crashing_packet.txt");
+                    fs::write("crashing_packet.txt", packets.to_string()).await?;
+                    break;
+                }
+            }
+        }
     }
-    loop {}
     Ok(())
 }
