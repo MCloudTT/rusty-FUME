@@ -17,7 +17,6 @@ pub(crate) fn run_thread(
         let mut last_packets = Vec::new();
         let mut counter: u64 = 0;
         loop {
-            // TODO: Don't unwrap here, if we can't connect we should stop the fuzzing and dump packets
             let mut new_tcpstream = TcpStream::connect(address.clone()).await;
             if new_tcpstream.is_err() {
                 break;

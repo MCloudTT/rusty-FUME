@@ -1,9 +1,10 @@
 use color_eyre::owo_colors::OwoColorize;
 use std::process::exit;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::broadcast::Sender;
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout};
 use tracing::{debug, info, trace};
 
 // TODO: How do the tasks ask if the server has exited? And better yet, how do they get the message back?
@@ -26,28 +27,30 @@ pub async fn start_supervised_process(sender: Sender<()>) -> color_eyre::Result<
     let mut stderr_reader = BufReader::new(child.stderr.take().unwrap()).lines();
     tokio::spawn(async move {
         loop {
-            let last_stdout = stdout_reader.next_line().await.unwrap();
-            let last_stderr = stderr_reader.next_line().await.unwrap();
+            let mut last_stdout: String = String::new();
+            let mut last_stderr: String = String::new();
+            if let Ok(Ok(Some(new_stdout))) =
+                timeout(Duration::from_millis(1), stdout_reader.next_line()).await
+            {
+                last_stdout = new_stdout;
+            }
+            if let Ok(Ok(Some(new_stderr))) =
+                timeout(Duration::from_millis(1), stderr_reader.next_line()).await
+            {
+                last_stderr = new_stderr;
+            }
             trace!("Last stdout: {:?}", last_stdout);
             trace!("Last stderr: {:?}", last_stderr);
             let status = child.try_wait();
             if let Ok(Some(status)) = status {
                 sender.send(()).unwrap();
                 sleep(tokio::time::Duration::from_secs(5)).await;
-                info!(
-                    "exited with: {}. Here is the last stdout and stderr",
-                    status
-                );
-                if let Some(last_stdout) = last_stdout {
-                    info!("{}", last_stdout);
-                }
-                if let Some(last_stderr) = last_stderr {
-                    info!("{}", last_stderr.red());
-                }
+                info!("Broker process exited with status: {}", status);
+                info!("Last stdout: {:?}", last_stdout);
+                info!("Last stderr: {:?}", last_stderr);
                 exit(-1);
                 break;
             }
-            sleep(tokio::time::Duration::from_secs(1)).await;
         }
     });
     Ok(())

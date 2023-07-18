@@ -194,20 +194,7 @@ where
                 let res = send_packets(&mut self.stream, &self.packets).await;
                 if let Err(e) = res {
                     match e {
-                        SendError::Timeout => {
-                            error!("Timeout");
-                            // Write the last packet to disk hexadecimally
-                            let data = self
-                                .packets
-                                .0
-                                .iter()
-                                .map(|x| hex::encode(x))
-                                .collect::<Vec<String>>()
-                                .join("\n");
-                            let mut file = fs::write("crashing_packet", data)
-                                .await
-                                .expect("Could not write to file");
-                        }
+                        SendError::Timeout => {}
                         SendError::ReceiveErr => {
                             error!("Receive error, probably disconnected by the broker...")
                         }

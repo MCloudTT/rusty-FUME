@@ -104,7 +104,7 @@ async fn main() -> color_eyre::Result<()> {
     let cli = Cli::parse();
     match &cli.subcommand {
         SubCommands::Fuzz => {
-            let threads = 100;
+            let threads = 1;
             // This receiver is necessary to dump the packets once the broker is stopped
             let (sender, _) = tokio::sync::broadcast::channel(1);
             let mut subscribers = vec![];
