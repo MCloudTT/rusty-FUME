@@ -37,7 +37,7 @@ pub async fn start_supervised_process(sender: Sender<()>) -> color_eyre::Result<
             if let Ok(Ok(Some(new_stderr))) =
                 timeout(Duration::from_millis(1), stderr_reader.next_line()).await
             {
-                last_stderr = new_stderr;
+                last_stderr.push_str(new_stderr.as_str());
             }
             trace!("Last stdout: {:?}", last_stdout);
             trace!("Last stderr: {:?}", last_stderr);

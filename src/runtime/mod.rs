@@ -4,12 +4,12 @@ use rand_xoshiro::Xoshiro256Plus;
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::sync::broadcast::Receiver;
 use tokio::{fs, task};
-use tracing::info;
+use tracing::{error, info};
 
 // TODO: Change address to allow other kinds of Streams
 /// Runs a task that connects to the broker and fuzzes it
 pub(crate) fn run_thread(
-    i: u64,
+    seed: u64,
     receiver_clone: Receiver<()>,
     address: impl ToSocketAddrs + Clone + Send + Sync + 'static,
 ) {
@@ -26,7 +26,7 @@ pub(crate) fn run_thread(
             state_machine
                 .execute(
                     Mode::MutationGuided,
-                    &mut Xoshiro256Plus::seed_from_u64(i + counter),
+                    &mut Xoshiro256Plus::seed_from_u64(seed + counter),
                 )
                 .await;
             last_packets = state_machine.previous_packets.clone();
@@ -37,13 +37,16 @@ pub(crate) fn run_thread(
         }
         // If the fuzzing is stopped we dump the packets
         for packet in last_packets.iter().enumerate() {
-            fs::write(
-                format!("fuzzing_{}_{}.txt", i, packet.0),
+            let res = fs::write(
+                format!("fuzzing_{}_{}.txt", seed, packet.0),
                 packet.1.to_string(),
             )
-            .await
-            .unwrap();
+            .await;
+            // TODO: Handle some errors
+            if res.is_err() {
+                error!("Error dumping packets: {:?}", res);
+            }
         }
-        info!("Thread {} dumped packets", i);
+        info!("Thread {} dumped packets", seed);
     });
 }
