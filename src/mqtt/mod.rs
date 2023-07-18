@@ -1,5 +1,5 @@
 use crate::markov::ByteStream;
-use crate::Packets;
+use crate::{Packets, PACKET_QUEUE};
 use mqtt::packet::QoSWithPacketIdentifier;
 use mqtt::{Encodable, TopicFilter, TopicName};
 use rand::prelude::ThreadRng;
@@ -122,16 +122,23 @@ pub(crate) async fn send_packets(
     packets: &Packets,
 ) -> Result<(), SendError> {
     for packet in &packets.0 {
-        send_packet(stream, packet.as_slice()).await?;
+        send_packet(stream, packet.as_slice(), packets).await?;
     }
     Ok(())
 }
 
+const PACKET_TIMEOUT: u64 = 200;
+
 pub(crate) async fn send_packet(
     stream: &mut impl ByteStream,
     packet: &[u8],
+    packets: &Packets,
 ) -> Result<(), SendError> {
-    let write_result = timeout(Duration::from_millis(20), stream.write_all(packet)).await;
+    let write_result = timeout(
+        Duration::from_millis(PACKET_TIMEOUT),
+        stream.write_all(packet),
+    )
+    .await;
     match write_result {
         Ok(Ok(_)) => (),
         Err(t) => {
@@ -143,11 +150,10 @@ pub(crate) async fn send_packet(
         }
     }
     let mut buf = [0; 1024];
-    let res = timeout(Duration::from_millis(20), stream.read(&mut buf)).await;
+    let res = timeout(Duration::from_millis(PACKET_TIMEOUT), stream.read(&mut buf)).await;
     match res {
         Ok(Ok(p)) => {
-            // TODO: Check if it matches a known packet we received or is a new behavior and if it is add it to the corpus
-            trace!("Received Packet hex encoded: {:?}", hex::encode(&buf));
+            known_packet(&buf[..p], &packets).await;
             Ok(())
         }
         Err(t) => {
@@ -162,7 +168,20 @@ pub(crate) async fn send_packet(
     }
 }
 
-fn known_packet(packet: &[u8]) -> bool {
+/// This works by using the response packet as the key in a hashmap. If the packet is already in the hashmap we know that we have seen it before
+async fn known_packet(response_packet: &[u8], input_packet: &Packets) -> bool {
     // TODO: decode the packet and extract user id, payload, topic etc. because those don't matter to see if it is a known packet
+    // TODO: More efficient algorithm, maybe Locational Hashing?
+    let mut queue_lock = PACKET_QUEUE.get().unwrap().clone();
+    let mut queue = queue_lock.write().await;
+    if queue
+        .0
+        .insert(response_packet.to_vec(), input_packet.clone())
+        .is_none()
+    {
+        debug!("New behavior discovered: {:?}", input_packet);
+        return true;
+    }
+    debug!("Known behavior. We have {} known behaviors", queue.0.len());
     false
 }

@@ -19,6 +19,7 @@
 //! - SEND: Send the current chain and either go to Sf or S2
 //! Once they get to S2 they behave the same way.
 use std::cmp::min;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 // TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
 // FIXME: Fix ranges...
@@ -40,7 +41,7 @@ mod markov;
 pub mod mqtt;
 mod process_monitor;
 mod runtime;
-
+/// Our packet queue, where new observed packets and their corresponding chains are stored
 static PACKET_QUEUE: OnceLock<Arc<RwLock<PacketQueue>>> = OnceLock::new();
 #[derive(Debug, PartialEq, Eq, Hash, Default, Clone)]
 pub struct Packets([Vec<u8>; MAX_PACKETS]);
@@ -78,7 +79,7 @@ impl Packets {
     }
 }
 #[derive(Debug, PartialEq, Eq, Hash, Default)]
-struct PacketQueue(Vec<Packets>);
+struct PacketQueue(BTreeMap<Vec<u8>, Packets>);
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -95,13 +96,15 @@ enum SubCommands {
     Fuzz,
     Replay,
 }
-// TODO: Main has gotten too complicated, refactor it to runtime/mod.rs
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     tracing_subscriber::fmt::init();
     color_eyre::install()?;
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
+    PACKET_QUEUE
+        .set(Arc::new(RwLock::new(PacketQueue::default())))
+        .unwrap();
     match &cli.subcommand {
         SubCommands::Fuzz => {
             let threads = 1;
@@ -112,14 +115,10 @@ async fn main() -> color_eyre::Result<()> {
                 subscribers.push(sender.subscribe());
             }
             start_supervised_process(sender).await?;
-            // TODO: Make the IP configurable via clap or similar
             let address = cli.target.clone();
             let mut tcpstream = TcpStream::connect(&address).await?;
             test_connection(&mut tcpstream).await?;
             info!("Connection established");
-            PACKET_QUEUE
-                .set(Arc::new(RwLock::new(PacketQueue::default())))
-                .unwrap();
             info!("Starting fuzzing!");
             let mut rng = thread_rng();
             for i in 0u64..threads {
@@ -165,7 +164,7 @@ async fn main() -> color_eyre::Result<()> {
             for packets in &all_packets {
                 let mut stream = TcpStream::connect(&cli.target).await?;
                 for packet in &packets.0 {
-                    let _ = send_packet(&mut stream, &packet).await;
+                    let _ = send_packet(&mut stream, &packet, &Packets::new()).await;
                 }
                 if !receiver.is_empty() {
                     info!("Found crashing packet chain, dumping to crashing_packet.txt");

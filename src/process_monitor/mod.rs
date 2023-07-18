@@ -26,9 +26,9 @@ pub async fn start_supervised_process(sender: Sender<()>) -> color_eyre::Result<
     let mut stdout_reader = BufReader::new(child.stdout.take().unwrap()).lines();
     let mut stderr_reader = BufReader::new(child.stderr.take().unwrap()).lines();
     tokio::spawn(async move {
+        let mut last_stdout: String = String::new();
+        let mut last_stderr: String = String::new();
         loop {
-            let mut last_stdout: String = String::new();
-            let mut last_stderr: String = String::new();
             if let Ok(Ok(Some(new_stdout))) =
                 timeout(Duration::from_millis(1), stdout_reader.next_line()).await
             {

@@ -118,8 +118,9 @@ where
     async fn next(&mut self, mode: Mode, rng: &mut Xoshiro256Plus) {
         match &self.state {
             State::S0 => {
-                if mode == MutationGuided && rng.gen_range(0f32..1f32) < SEL_FROM_QUEUE
-                    || !self.packets.is_full()
+                if mode == MutationGuided
+                    && rng.gen_range(0f32..1f32) < SEL_FROM_QUEUE
+                    && !self.packets.is_full()
                 {
                     self.state = State::ADD(PacketType::CONNECT);
                 } else {
@@ -132,8 +133,10 @@ where
                 if queue.0.is_empty() {
                     self.state = State::ADD(PacketType::CONNECT);
                 } else {
-                    let packet = queue.0[rng.gen_range(0..queue.0.len())].clone();
-                    self.packets = packet;
+                    let packet_index = rng.gen_range(0..queue.0.len());
+                    let packet = queue.0.iter().nth(packet_index).unwrap();
+                    // TODO: Really?
+                    self.packets = packet.1.clone().clone();
                     self.state = State::MUTATION;
                 }
             }
