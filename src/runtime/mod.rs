@@ -18,7 +18,7 @@ pub(crate) async fn run_thread(
         let mut last_packets = Vec::new();
         let mut counter: u64 = 0;
         while counter < iterations {
-            let mut new_tcpstream = TcpStream::connect(address.clone()).await;
+            let new_tcpstream = TcpStream::connect(address.clone()).await;
             if new_tcpstream.is_err() {
                 break;
             }
@@ -27,7 +27,7 @@ pub(crate) async fn run_thread(
             state_machine
                 .execute(
                     Mode::MutationGuided,
-                    &mut Xoshiro256Plus::seed_from_u64(seed),
+                    &mut Xoshiro256Plus::seed_from_u64(seed.wrapping_add(counter)),
                 )
                 .await;
             last_packets = state_machine.previous_packets.clone();
