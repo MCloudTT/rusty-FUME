@@ -8,15 +8,16 @@ use tracing::{error, info};
 
 // TODO: Change address to allow other kinds of Streams
 /// Runs a task that connects to the broker and fuzzes it
-pub(crate) fn run_thread(
+pub(crate) async fn run_thread(
     seed: u64,
     receiver_clone: Receiver<()>,
     address: impl ToSocketAddrs + Clone + Send + Sync + 'static,
+    iterations: u64,
 ) {
-    task::spawn(async move {
+    let task_handle = task::spawn(async move {
         let mut last_packets = Vec::new();
         let mut counter: u64 = 0;
-        loop {
+        while counter < iterations {
             let mut new_tcpstream = TcpStream::connect(address.clone()).await;
             if new_tcpstream.is_err() {
                 break;
@@ -26,7 +27,7 @@ pub(crate) fn run_thread(
             state_machine
                 .execute(
                     Mode::MutationGuided,
-                    &mut Xoshiro256Plus::seed_from_u64(seed + counter),
+                    &mut Xoshiro256Plus::seed_from_u64(seed),
                 )
                 .await;
             last_packets = state_machine.previous_packets.clone();
@@ -34,11 +35,12 @@ pub(crate) fn run_thread(
             if !receiver_clone.is_empty() {
                 break;
             }
+            counter += 1;
         }
         // If the fuzzing is stopped we dump the packets
         for packet in last_packets.iter().enumerate() {
             let res = fs::write(
-                format!("fuzzing_{}_{}.txt", seed, packet.0),
+                format!("threads/fuzzing_{}_{}.txt", seed, packet.0),
                 packet.1.to_string(),
             )
             .await;
@@ -49,4 +51,5 @@ pub(crate) fn run_thread(
         }
         info!("Thread {} dumped packets", seed);
     });
+    let _ = task_handle.await;
 }

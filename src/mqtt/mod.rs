@@ -2,14 +2,9 @@ use crate::markov::ByteStream;
 use crate::{Packets, PACKET_QUEUE};
 use mqtt::packet::QoSWithPacketIdentifier;
 use mqtt::{Encodable, TopicFilter, TopicName};
-use rand::prelude::ThreadRng;
-use rand::Rng;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::join;
-use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::time::timeout;
-use tracing::{debug, error, trace};
+use tracing::{debug, error};
 /// Macro for importing packets. TODO: They need to be converted from hex to bytes
 #[macro_export]
 macro_rules! import_packets{
@@ -64,7 +59,7 @@ pub(crate) fn generate_publish_packet() -> Vec<u8> {
 }
 
 pub(crate) fn generate_subscribe_packet() -> Vec<u8> {
-    let mut subscribe = mqtt::packet::SubscribePacket::new(
+    let subscribe = mqtt::packet::SubscribePacket::new(
         10,
         vec![(
             TopicFilter::new("topic").unwrap(),
@@ -77,7 +72,7 @@ pub(crate) fn generate_subscribe_packet() -> Vec<u8> {
 }
 
 pub(crate) fn generate_unsubscribe_packet() -> Vec<u8> {
-    let mut unsubscribe =
+    let unsubscribe =
         mqtt::packet::UnsubscribePacket::new(10, vec![TopicFilter::new("topic").unwrap()]);
     let mut packet = Vec::new();
     unsubscribe.encode(&mut packet).unwrap();
@@ -85,14 +80,14 @@ pub(crate) fn generate_unsubscribe_packet() -> Vec<u8> {
 }
 
 pub(crate) fn generate_disconnect_packet() -> Vec<u8> {
-    let mut disconnect = mqtt::packet::DisconnectPacket::new();
+    let disconnect = mqtt::packet::DisconnectPacket::new();
     let mut packet = Vec::new();
     disconnect.encode(&mut packet).unwrap();
     packet
 }
 
 pub(crate) fn generate_pingreq_packet() -> Vec<u8> {
-    let mut pingreq = mqtt::packet::PingreqPacket::new();
+    let pingreq = mqtt::packet::PingreqPacket::new();
     let mut packet = Vec::new();
     pingreq.encode(&mut packet).unwrap();
     packet
@@ -127,7 +122,7 @@ pub(crate) async fn send_packets(
     Ok(())
 }
 
-const PACKET_TIMEOUT: u64 = 200;
+const PACKET_TIMEOUT: u64 = 1000;
 
 pub(crate) async fn send_packet(
     stream: &mut impl ByteStream,

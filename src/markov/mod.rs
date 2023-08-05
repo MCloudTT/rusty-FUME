@@ -19,9 +19,9 @@ mod mutations;
 use crate::markov::mutations::{delete, inject, swap, InjectType};
 use crate::markov::Mode::MutationGuided;
 use crate::mqtt::{
-    generate_auth_packet, generate_connect_packet, generate_disconnect_packet,
-    generate_pingreq_packet, generate_publish_packet, generate_subscribe_packet,
-    generate_unsubscribe_packet, send_packets, SendError,
+    generate_connect_packet, generate_disconnect_packet, generate_pingreq_packet,
+    generate_publish_packet, generate_subscribe_packet, generate_unsubscribe_packet, send_packets,
+    SendError,
 };
 use crate::{Packets, PACKET_QUEUE};
 use rand::distributions::Standard;
@@ -30,10 +30,7 @@ use rand::Rng;
 use rand_xoshiro::Xoshiro256Plus;
 use std::default::Default;
 use std::fmt::Debug;
-use std::process::exit;
-use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tracing::field::debug;
 use tracing::{debug, error, trace};
 
 const SEL_FROM_QUEUE: f32 = 0.5;
