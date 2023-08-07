@@ -44,6 +44,7 @@ mod markov;
 pub mod mqtt;
 mod process_monitor;
 mod runtime;
+// TODO: All threads should also dump their last packets for fast replaying
 /// Our packet queue, where new observed packets and their corresponding chains are stored
 static PACKET_QUEUE: OnceLock<Arc<RwLock<PacketQueue>>> = OnceLock::new();
 #[derive(Debug, PartialEq, Eq, Hash, Default, Clone)]
