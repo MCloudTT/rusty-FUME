@@ -23,7 +23,7 @@ pub async fn start_supervised_process(
     assert!(child.id().is_some());
     debug!("Started broker process");
     // Now broker should take longer than 2 seconds to start. But we could make this configurable.
-    sleep(tokio::time::Duration::from_secs(2)).await;
+    sleep(tokio::time::Duration::from_secs(1)).await;
     let mut stdout_reader = BufReader::new(child.stdout.take().unwrap()).lines();
     let mut stderr_reader = BufReader::new(child.stderr.take().unwrap()).lines();
     tokio::spawn(async move {
@@ -40,8 +40,6 @@ pub async fn start_supervised_process(
             {
                 last_stderr.push_str(new_stderr.as_str());
             }
-            trace!("Last stdout: {:?}", last_stdout);
-            trace!("Last stderr: {:?}", last_stderr);
             let status = child.try_wait();
             if let Ok(Some(status)) = status {
                 sender.send(()).unwrap();

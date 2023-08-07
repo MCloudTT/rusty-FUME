@@ -4,34 +4,8 @@ use mqtt::packet::QoSWithPacketIdentifier;
 use mqtt::{Encodable, TopicFilter, TopicName};
 use std::time::Duration;
 use tokio::time::timeout;
-use tracing::{debug, error};
-/// Macro for importing packets. TODO: They need to be converted from hex to bytes
-#[macro_export]
-macro_rules! import_packets{
-    ($($name:ident),*) => {
-        $(
-            pub(crate) const $name: &'static str = include_str!(concat!("../../mqtt_corpus/", stringify!($name)));
-        )*
-    }
-}
-import_packets!(
-    AUTH,
-    CONNACK,
-    CONNECT,
-    DISCONNECT,
-    PINGREQ,
-    PINGRESP,
-    PUBACK,
-    PUBCOMP,
-    PUBLISH,
-    PUBREC,
-    PUBREL,
-    RESERVED,
-    SUBACK,
-    SUBSCRIBE,
-    UNSUBACK,
-    UNSUBSCRIBE
-);
+use tracing::{debug, error, trace};
+// TODO: Maybe we can begin the packet queue with some more interesting packets that triggered bugs in the past from CVEs
 pub(crate) fn generate_auth_packet() -> Vec<u8> {
     unimplemented!("Auth packet not implemented yet. Switch to MQTT V5")
 }
@@ -122,7 +96,7 @@ pub(crate) async fn send_packets(
     Ok(())
 }
 
-const PACKET_TIMEOUT: u64 = 1000;
+const PACKET_TIMEOUT: u64 = 700;
 
 pub(crate) async fn send_packet(
     stream: &mut impl ByteStream,
@@ -177,6 +151,6 @@ async fn known_packet(response_packet: &[u8], input_packet: &Packets) -> bool {
         debug!("New behavior discovered: {:?}", input_packet);
         return true;
     }
-    debug!("Known behavior. We have {} known behaviors", queue.0.len());
+    trace!("Known behavior. We have {} known behaviors", queue.0.len());
     false
 }

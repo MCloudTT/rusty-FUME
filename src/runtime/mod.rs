@@ -1,4 +1,5 @@
 use crate::markov::{Mode, StateMachine};
+use crate::SeedAndIterations;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256Plus;
 use tokio::net::{TcpStream, ToSocketAddrs};
@@ -17,7 +18,7 @@ pub(crate) async fn run_thread(
     let task_handle = task::spawn(async move {
         let mut last_packets = Vec::new();
         let mut counter: u64 = 0;
-        while counter < iterations {
+        while counter <= iterations {
             let new_tcpstream = TcpStream::connect(address.clone()).await;
             if new_tcpstream.is_err() {
                 break;
@@ -37,19 +38,21 @@ pub(crate) async fn run_thread(
             }
             counter += 1;
         }
-        // If the fuzzing is stopped we dump the packets
-        for packet in last_packets.iter().enumerate() {
-            let res = fs::write(
-                format!("threads/fuzzing_{}_{}.txt", seed, packet.0),
-                packet.1.to_string(),
-            )
-            .await;
+        if iterations == u64::MAX {
+            // If the fuzzing is stopped we dump the packets
+            let serialized = toml::to_string(&SeedAndIterations {
+                seed: seed.to_string(),
+                iterations: counter.to_string(),
+            })
+            .unwrap();
+            let res = fs::write(format!("threads/fuzzing_{}.txt", seed), serialized).await;
+
             // TODO: Handle some errors
             if res.is_err() {
                 error!("Error dumping packets: {:?}", res);
             }
         }
-        info!("Thread {} dumped packets", seed);
+        info!("Thread {} finished!", seed);
     });
     let _ = task_handle.await;
 }

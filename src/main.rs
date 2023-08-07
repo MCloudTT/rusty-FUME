@@ -25,6 +25,7 @@ use std::sync::{Arc, OnceLock};
 // TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
 // FIXME: Fix ranges...
 // TODO: Replay threads sequentially
+// TODO: Run this on my server
 use crate::markov::MAX_PACKETS;
 use crate::mqtt::test_connection;
 use crate::process_monitor::start_supervised_process;
@@ -33,6 +34,7 @@ use clap::{Parser, Subcommand};
 use futures::future::join_all;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use tokio::fs;
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
@@ -91,12 +93,17 @@ struct Cli {
     target: String,
     #[arg(short, long)]
     broker_command: String,
+    #[arg(short, long, default_value = "500")]
+    timeout: u64,
 }
 
 #[derive(Subcommand, Debug)]
 enum SubCommands {
     // TODO: Do Fuzzing args like threads, chances etc
-    Fuzz,
+    Fuzz {
+        #[arg(short, long, default_value_t = 100)]
+        threads: u64,
+    },
     Replay {
         #[arg(short, long, default_value_t = true)]
         sequential: bool,
@@ -105,8 +112,8 @@ enum SubCommands {
 /// Struct to serialize threads once they are done(aka the broker has crashed).
 #[derive(Serialize, Deserialize, Debug)]
 struct SeedAndIterations {
-    pub seed: u64,
-    pub iterations: u64,
+    pub seed: String,
+    pub iterations: String,
 }
 
 #[tokio::main]
@@ -119,12 +126,11 @@ async fn main() -> color_eyre::Result<()> {
         .set(Arc::new(RwLock::new(PacketQueue::default())))
         .unwrap();
     match &cli.subcommand {
-        SubCommands::Fuzz => {
-            let threads = 100;
+        SubCommands::Fuzz { threads } => {
             // This receiver is necessary to dump the packets once the broker is stopped
             let (sender, _) = tokio::sync::broadcast::channel(1);
             let mut subscribers = vec![];
-            for _ in 0..threads {
+            for _ in 0..*threads {
                 subscribers.push(sender.subscribe());
             }
             start_supervised_process(sender, cli.broker_command).await?;
@@ -136,7 +142,7 @@ async fn main() -> color_eyre::Result<()> {
             let mut rng = thread_rng();
             let _ = fs::create_dir("./threads").await;
             let mut task_handles = vec![];
-            for i in 0u64..threads {
+            for _ in 0u64..*threads {
                 let receiver_clone = subscribers.pop().unwrap();
                 let seed: u64 = rng.gen();
                 task_handles.push(run_thread(seed, receiver_clone, address.clone(), u64::MAX));
@@ -177,10 +183,10 @@ async fn main() -> color_eyre::Result<()> {
                 let seed_and_iterations: SeedAndIterations =
                     toml::from_str(&fs::read_to_string(file).await?)?;
                 threads.push(run_thread(
-                    seed_and_iterations.seed,
+                    u64::from_str(&seed_and_iterations.seed).unwrap(),
                     receiver_clone,
                     cli.target.clone(),
-                    seed_and_iterations.iterations,
+                    u64::from_str(&seed_and_iterations.iterations).unwrap(),
                 ));
             }
             // TODO: Sequential replay
@@ -188,11 +194,14 @@ async fn main() -> color_eyre::Result<()> {
                 for (index, thread) in threads.into_iter().enumerate() {
                     info!("Replaying thread number {}", index);
                     thread.await;
+                    if !receiver.is_empty() {
+                        info!("Crashing seed found!");
+                        break;
+                    }
                 }
             } else {
                 join_all(threads).await;
             }
-            info!("No crashing seed found!");
         }
     }
     Ok(())
