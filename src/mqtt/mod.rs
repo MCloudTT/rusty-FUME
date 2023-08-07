@@ -96,7 +96,7 @@ pub(crate) async fn send_packets(
     Ok(())
 }
 
-const PACKET_TIMEOUT: u64 = 700;
+const PACKET_TIMEOUT: u64 = 100;
 
 pub(crate) async fn send_packet(
     stream: &mut impl ByteStream,
