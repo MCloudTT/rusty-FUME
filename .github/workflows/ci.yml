@@ -80,4 +80,4 @@ jobs:
           components: clippy
 
       - name: Run cargo clippy --package rusty-FUME --all-targets
-        run: cargo clippy --package rusty-FUME --all-targets
+        run: cargo clippy --package rusty-fume --all-targets
