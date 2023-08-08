@@ -17,7 +17,7 @@
 mod mutations;
 
 use crate::markov::mutations::{delete, inject, swap, InjectType};
-use crate::markov::Mode::MutationGuided;
+use crate::markov::Mode::{GenerationGuided, MutationGuided};
 use crate::mqtt::{
     generate_connect_packet, generate_disconnect_packet, generate_pingreq_packet,
     generate_publish_packet, generate_subscribe_packet, generate_unsubscribe_packet, send_packets,
@@ -94,6 +94,16 @@ pub enum Mode {
     MutationGuided,
     GenerationGuided,
 }
+
+impl Distribution<Mode> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Mode {
+        match rng.gen_range(0..10) {
+            0..=4 => MutationGuided,
+            5..=9 => GenerationGuided,
+            _ => unreachable!(),
+        }
+    }
+}
 impl<B> StateMachine<B>
 where
     B: ByteStream,
@@ -114,16 +124,18 @@ where
     }
     async fn next(&mut self, mode: Mode, rng: &mut Xoshiro256PlusPlus) {
         match &self.state {
-            State::S0 => {
-                if mode == MutationGuided
-                    && rng.gen_range(0f32..1f32) < SEL_FROM_QUEUE
-                    && !self.packets.is_full()
-                {
-                    self.state = State::ADD(PacketType::CONNECT);
-                } else {
-                    self.state = State::SelectFromQueue;
+            State::S0 => match mode {
+                MutationGuided => {
+                    if rng.gen_range(0f32..1f32) < SEL_FROM_QUEUE && !self.packets.is_full() {
+                        self.state = State::ADD(PacketType::CONNECT);
+                    } else {
+                        self.state = State::SelectFromQueue;
+                    }
                 }
-            }
+                GenerationGuided => {
+                    self.state = State::ADD(PacketType::CONNECT);
+                }
+            },
             State::SelectFromQueue => {
                 // Maybe we should use a priority queue in-memory here instead of storing on disk(overhead). Should be measured in the future.
                 let queue = PACKET_QUEUE.get().unwrap().read().await;

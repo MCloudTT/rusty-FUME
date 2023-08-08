@@ -1,6 +1,6 @@
-use crate::markov::{Mode, StateMachine};
+use crate::markov::StateMachine;
 use crate::SeedAndIterations;
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::sync::broadcast::Receiver;
@@ -18,6 +18,7 @@ pub(crate) async fn run_thread(
     let task_handle = task::spawn(async move {
         let mut last_packets = Vec::new();
         let mut counter: u64 = 0;
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
         while counter <= iterations {
             let new_tcpstream = TcpStream::connect(address.clone()).await;
             if new_tcpstream.is_err() {
@@ -25,12 +26,8 @@ pub(crate) async fn run_thread(
             }
             let new_tcpstream = new_tcpstream.unwrap();
             let mut state_machine = StateMachine::new(new_tcpstream);
-            state_machine
-                .execute(
-                    Mode::MutationGuided,
-                    &mut Xoshiro256PlusPlus::seed_from_u64(seed.wrapping_add(counter)),
-                )
-                .await;
+            let mode = rng.gen();
+            state_machine.execute(mode, &mut rng).await;
             last_packets = state_machine.previous_packets.clone();
             // We receive a message once the broker is stopped
             // TODO: Also save last packets upon crash
