@@ -36,9 +36,9 @@ use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use tokio::fs;
-use tokio::net::TcpStream;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, trace};
+use tokio_uring::net::TcpStream;
+use tracing::{debug, info, trace};
 
 mod markov;
 pub mod mqtt;
@@ -83,7 +83,7 @@ impl Packets {
     }
 }
 #[derive(Debug, PartialEq, Eq, Hash, Default)]
-struct PacketQueue(BTreeMap<Vec<u8>, Packets>);
+struct PacketQueue(BTreeMap<usize, Packets>);
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -137,7 +137,7 @@ fn main() -> color_eyre::Result<()> {
                 }
                 start_supervised_process(sender, cli.broker_command).await?;
                 let address = cli.target.clone();
-                let mut tcpstream = TcpStream::connect(&address).await?;
+                let mut tcpstream = TcpStream::connect((&address).parse()?).await?;
                 test_connection(&mut tcpstream).await?;
                 info!("Connection established");
                 info!("Starting fuzzing!");

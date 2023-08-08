@@ -3,7 +3,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::broadcast::Sender;
 use tokio::time::{sleep, timeout};
-use tracing::{debug, info, trace};
+use tracing::{debug, info};
 
 // TODO: How do the tasks ask if the server has exited? And better yet, how do they get the message back?
 // TODO: Also, how do the tasks know when it has caused new stdout/stderr output?

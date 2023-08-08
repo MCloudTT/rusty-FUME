@@ -1,7 +1,7 @@
 use crate::markov::{Mode, StateMachine};
 use crate::SeedAndIterations;
 use rand::SeedableRng;
-use rand_xoshiro::Xoshiro256Plus;
+use rand_xoshiro::Xoshiro256PlusPlus;
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::sync::broadcast::Receiver;
 use tokio::{fs, task};
@@ -28,11 +28,12 @@ pub(crate) async fn run_thread(
             state_machine
                 .execute(
                     Mode::MutationGuided,
-                    &mut Xoshiro256Plus::seed_from_u64(seed.wrapping_add(counter)),
+                    &mut Xoshiro256PlusPlus::seed_from_u64(seed.wrapping_add(counter)),
                 )
                 .await;
             last_packets = state_machine.previous_packets.clone();
             // We receive a message once the broker is stopped
+            // TODO: Also save last packets upon crash
             if !receiver_clone.is_empty() {
                 break;
             }

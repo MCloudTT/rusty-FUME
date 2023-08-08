@@ -4,7 +4,7 @@ use mqtt::packet::QoSWithPacketIdentifier;
 use mqtt::{Encodable, TopicFilter, TopicName};
 use std::time::Duration;
 use tokio::time::timeout;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, info, trace};
 // TODO: Maybe we can begin the packet queue with some more interesting packets that triggered bugs in the past from CVEs
 pub(crate) fn generate_auth_packet() -> Vec<u8> {
     unimplemented!("Auth packet not implemented yet. Switch to MQTT V5")
@@ -143,13 +143,17 @@ pub(crate) async fn send_packet(
 async fn known_packet(response_packet: &[u8], input_packet: &Packets) -> bool {
     // TODO: decode the packet and extract user id, payload, topic etc. because those don't matter to see if it is a known packet
     // TODO: More efficient algorithm, maybe Locational Hashing?
-    let mut queue_lock = PACKET_QUEUE.get().unwrap().clone();
+    let queue_lock = PACKET_QUEUE.get().unwrap().clone();
     let mut queue = queue_lock.write().await;
     if queue
         .0
         .insert(
             // Insert the packet in the queue if it's size ignoring trailing zeros is not already in the queue
-            response_packet.to_vec(),
+            response_packet
+                .iter()
+                .rev()
+                .skip_while(|&&x| x == 0)
+                .count(),
             input_packet.clone(),
         )
         .is_none()

@@ -27,11 +27,11 @@ use crate::{Packets, PACKET_QUEUE};
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::Rng;
-use rand_xoshiro::Xoshiro256Plus;
+use rand_xoshiro::Xoshiro256PlusPlus;
 use std::default::Default;
 use std::fmt::Debug;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tracing::{debug, error, trace};
+use tracing::{debug, trace};
 
 const SEL_FROM_QUEUE: f32 = 0.7;
 const PACKET_APPEND_CHANCE: f32 = 0.2;
@@ -73,9 +73,9 @@ impl Distribution<Mutations> for Standard {
     }
 }
 
-pub trait ByteStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
+pub trait ByteStream: AsyncReadExt + AsyncWriteExt + Unpin {}
 
-impl<T> ByteStream for T where T: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
+impl<T> ByteStream for T where T: AsyncReadExt + AsyncWriteExt + Unpin {}
 pub struct StateMachine<B>
 where
     B: ByteStream,
@@ -106,13 +106,13 @@ where
             previous_packets: Vec::new(),
         }
     }
-    pub(crate) async fn execute(&mut self, mode: Mode, rng: &mut Xoshiro256Plus) {
+    pub(crate) async fn execute(&mut self, mode: Mode, rng: &mut Xoshiro256PlusPlus) {
         while self.state != State::Sf {
             self.next(mode, rng).await;
             debug!("State: {:?}", self.state);
         }
     }
-    async fn next(&mut self, mode: Mode, rng: &mut Xoshiro256Plus) {
+    async fn next(&mut self, mode: Mode, rng: &mut Xoshiro256PlusPlus) {
         match &self.state {
             State::S0 => {
                 if mode == MutationGuided

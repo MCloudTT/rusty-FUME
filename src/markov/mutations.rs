@@ -2,9 +2,9 @@ use crate::Packets;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::Rng;
-use rand_xoshiro::Xoshiro256Plus;
+use rand_xoshiro::Xoshiro256PlusPlus;
 
-pub fn inject(packets: &mut Packets, rng: &mut Xoshiro256Plus, inject_type: &InjectType) {
+pub fn inject(packets: &mut Packets, rng: &mut Xoshiro256PlusPlus, inject_type: &InjectType) {
     let packets_size = packets.size();
     debug_assert!(packets_size > 0, "Packet size should be greater than 0");
     let packet = packets.0.get_mut(rng.gen_range(0..packets_size)).unwrap();
@@ -30,7 +30,7 @@ impl Distribution<InjectType> for Standard {
     }
 }
 
-fn inject_bof(packet: &mut Vec<u8>, rng: &mut Xoshiro256Plus) {
+fn inject_bof(packet: &mut Vec<u8>, rng: &mut Xoshiro256PlusPlus) {
     let idx = rng.gen_range(0..packet.len());
     // To fight big packets
     let byte_length = 10000 / packet.len();
@@ -39,20 +39,20 @@ fn inject_bof(packet: &mut Vec<u8>, rng: &mut Xoshiro256Plus) {
     packet.splice(idx..idx, bytes);
 }
 
-fn inject_single(packet: &mut Vec<u8>, rng: &mut Xoshiro256Plus) {
+fn inject_single(packet: &mut Vec<u8>, rng: &mut Xoshiro256PlusPlus) {
     let idx = rng.gen_range(0..packet.len());
     let byte = rng.gen::<u8>();
     packet.insert(idx, byte);
 }
 
-pub fn delete(packets: &mut Packets, rng: &mut Xoshiro256Plus) {
+pub fn delete(packets: &mut Packets, rng: &mut Xoshiro256PlusPlus) {
     let packets_size = packets.size();
     let packet = packets.0.get_mut(rng.gen_range(0..packets_size)).unwrap();
     let idx = rng.gen_range(0..packet.len());
     packet.remove(idx);
 }
 
-pub fn swap(packets: &mut Packets, rng: &mut Xoshiro256Plus) {
+pub fn swap(packets: &mut Packets, rng: &mut Xoshiro256PlusPlus) {
     let packets_size = packets.size();
     let packet = packets.0.get_mut(rng.gen_range(0..packets_size)).unwrap();
     let idx = rng.gen_range(0..packet.len());
