@@ -33,11 +33,11 @@ use std::fmt::Debug;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, error, trace};
 
-const SEL_FROM_QUEUE: f32 = 0.5;
-const PACKET_CHANCE: f32 = 1. / 15.;
-const SEND_CHANCE: f32 = 0.33;
-const BOF_CHANCE: f32 = 0.25;
-const MUT_AFTER_SEND: f32 = 0.5;
+const SEL_FROM_QUEUE: f32 = 0.7;
+const PACKET_APPEND_CHANCE: f32 = 0.2;
+const SEND_CHANCE: f32 = 0.2;
+const BOF_CHANCE: f32 = 0.2;
+const MUT_AFTER_SEND: f32 = 0.7;
 pub const MAX_PACKETS: usize = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -162,7 +162,7 @@ where
                 self.state = State::ADDING
             }
             State::ADDING => {
-                if rng.gen_range(0f32..1f32) < PACKET_CHANCE {
+                if rng.gen_range(0f32..1f32) < PACKET_APPEND_CHANCE {
                     self.state = State::ADD(rng.gen());
                 } else {
                     self.state = State::MUTATION;
@@ -196,7 +196,7 @@ where
                     match e {
                         SendError::Timeout => {}
                         SendError::ReceiveErr => {
-                            error!("Receive error, probably disconnected by the broker...")
+                            trace!("Receive error, probably disconnected by the broker...")
                         }
                         SendError::SendErr => {
                             trace!("Send error, probably disconnected by the broker...")

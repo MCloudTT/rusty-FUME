@@ -13,7 +13,9 @@ pub(crate) fn generate_connect_packet() -> Vec<u8> {
     let mut connect = mqtt::packet::ConnectPacket::new("Hello MQTT Broker");
     connect.set_will(Some((
         TopicName::new("topic").unwrap(),
-        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        vec![
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 72, 255, 50, 0, 0, 0,
+        ],
     )));
     let mut packet = Vec::new();
     connect.encode(&mut packet).unwrap();
@@ -24,7 +26,7 @@ pub(crate) fn generate_publish_packet() -> Vec<u8> {
     let mut publish = mqtt::packet::PublishPacket::new(
         TopicName::new("topic").unwrap(),
         QoSWithPacketIdentifier::Level0,
-        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 72, 255, 50, 0, 0, 0],
     );
     publish.set_retain(true);
     let mut packet = Vec::new();
@@ -34,7 +36,7 @@ pub(crate) fn generate_publish_packet() -> Vec<u8> {
 
 pub(crate) fn generate_subscribe_packet() -> Vec<u8> {
     let subscribe = mqtt::packet::SubscribePacket::new(
-        10,
+        100,
         vec![(
             TopicFilter::new("topic").unwrap(),
             mqtt::QualityOfService::Level0,
@@ -90,7 +92,7 @@ pub(crate) async fn send_packets(
     stream: &mut impl ByteStream,
     packets: &Packets,
 ) -> Result<(), SendError> {
-    for packet in &packets.0 {
+    for packet in packets.0.iter().filter(|p| !p.is_empty()) {
         send_packet(stream, packet.as_slice(), packets).await?;
     }
     Ok(())
@@ -111,7 +113,7 @@ pub(crate) async fn send_packet(
     match write_result {
         Ok(Ok(_)) => (),
         Err(t) => {
-            error!("Timeout: {:?}", t);
+            trace!("Timeout: {:?}", t);
         }
         Ok(Err(e)) => {
             debug!("Send error: {:?}", e);
@@ -126,12 +128,12 @@ pub(crate) async fn send_packet(
             Ok(())
         }
         Err(t) => {
-            error!("Timeout: {:?}", t);
+            trace!("Timeout: {:?}", t);
             // TODO: Retry sending the packet
             Err(SendError::Timeout)
         }
         Ok(Err(e)) => {
-            error!("Receive error: {:?}", e);
+            trace!("Receive error: {:?}", e);
             Err(SendError::ReceiveErr)
         }
     }
@@ -147,11 +149,7 @@ async fn known_packet(response_packet: &[u8], input_packet: &Packets) -> bool {
         .0
         .insert(
             // Insert the packet in the queue if it's size ignoring trailing zeros is not already in the queue
-            response_packet
-                .iter()
-                .rev()
-                .skip_while(|&&x| x == 0)
-                .count(),
+            response_packet.to_vec(),
             input_packet.clone(),
         )
         .is_none()
