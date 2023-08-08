@@ -83,7 +83,7 @@ impl Packets {
     }
 }
 #[derive(Debug, PartialEq, Eq, Hash, Default)]
-struct PacketQueue(BTreeMap<Vec<u8>, Packets>);
+struct PacketQueue(BTreeMap<usize, Packets>);
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -123,6 +123,7 @@ async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
+    // TODO: Insert Packets that were successful at crashing brokers previously into the packet_queue. Maybe via proc macro, so it's done at compile-time?
     PACKET_QUEUE
         .set(Arc::new(RwLock::new(PacketQueue::default())))
         .unwrap();
@@ -152,7 +153,9 @@ async fn main() -> color_eyre::Result<()> {
         }
         SubCommands::Replay { sequential } => {
             // Iterate through all fuzzing_{}.txt files and replay them one after another
-            let mut files = fs::read_dir("./threads").await?;
+            let mut files = fs::read_dir("./threads")
+                .await
+                .expect("Failed to find threads folder. Cannot Replay");
             let mut filtered_files = vec![];
             trace!(
                 "Found files: {:?} in folder {:?}",

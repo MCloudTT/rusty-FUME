@@ -4,7 +4,7 @@ use mqtt::packet::QoSWithPacketIdentifier;
 use mqtt::{Encodable, TopicFilter, TopicName};
 use std::time::Duration;
 use tokio::time::timeout;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 // TODO: Maybe we can begin the packet queue with some more interesting packets that triggered bugs in the past from CVEs
 pub(crate) fn generate_auth_packet() -> Vec<u8> {
     unimplemented!("Auth packet not implemented yet. Switch to MQTT V5")
@@ -145,10 +145,18 @@ async fn known_packet(response_packet: &[u8], input_packet: &Packets) -> bool {
     let mut queue = queue_lock.write().await;
     if queue
         .0
-        .insert(response_packet.to_vec(), input_packet.clone())
+        .insert(
+            // Insert the packet in the queue if it's size ignoring trailing zeros is not already in the queue
+            response_packet
+                .iter()
+                .rev()
+                .skip_while(|&&x| x == 0)
+                .count(),
+            input_packet.clone(),
+        )
         .is_none()
     {
-        debug!("New behavior discovered: {:?}", input_packet);
+        info!("New behavior discovered: {:?}", input_packet);
         return true;
     }
     trace!("Known behavior. We have {} known behaviors", queue.0.len());
