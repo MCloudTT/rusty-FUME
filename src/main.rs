@@ -36,8 +36,8 @@ use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use tokio::fs;
+use tokio::net::TcpStream;
 use tokio::sync::RwLock;
-use tokio_uring::net::TcpStream;
 use tracing::{debug, info, trace};
 
 mod markov;
@@ -137,10 +137,9 @@ fn main() -> color_eyre::Result<()> {
                 }
                 start_supervised_process(sender, cli.broker_command).await?;
                 let address = cli.target.clone();
-                let mut tcpstream = TcpStream::connect((&address).parse()?).await?;
+                let mut tcpstream = TcpStream::connect(&address).await?;
                 test_connection(&mut tcpstream).await?;
-                info!("Connection established");
-                info!("Starting fuzzing!");
+                info!("Connection established, starting fuzzing!");
                 let mut rng = thread_rng();
                 let _ = fs::create_dir("./threads").await;
                 let mut task_handles = vec![];
