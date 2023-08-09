@@ -24,6 +24,7 @@ use std::fmt::Display;
 use std::sync::{Arc, OnceLock};
 // TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
 // FIXME: Fix ranges...
+// TODO: Try tokio_uring
 // TODO: Replay threads sequentially
 // TODO: Run this on my server
 use crate::markov::MAX_PACKETS;
@@ -117,96 +118,95 @@ struct SeedAndIterations {
     pub iterations: String,
 }
 
-fn main() -> color_eyre::Result<()> {
-    tokio_uring::start(async {
-        tracing_subscriber::fmt::init();
-        color_eyre::install()?;
-        dotenvy::dotenv().ok();
-        let cli = Cli::parse();
-        // TODO: Insert Packets that were successful at crashing brokers previously into the packet_queue. Maybe via proc macro, so it's done at compile-time?
-        PACKET_QUEUE
-            .set(Arc::new(RwLock::new(PacketQueue::default())))
-            .unwrap();
-        match &cli.subcommand {
-            SubCommands::Fuzz { threads } => {
-                // This receiver is necessary to dump the packets once the broker is stopped
-                let (sender, _) = tokio::sync::broadcast::channel(1);
-                let mut subscribers = vec![];
-                for _ in 0..*threads {
-                    subscribers.push(sender.subscribe());
-                }
-                start_supervised_process(sender, cli.broker_command).await?;
-                let address = cli.target.clone();
-                let mut tcpstream = TcpStream::connect(&address).await?;
-                test_connection(&mut tcpstream).await?;
-                info!("Connection established, starting fuzzing!");
-                let mut rng = thread_rng();
-                let _ = fs::create_dir("./threads").await;
-                let mut task_handles = vec![];
-                for _ in 0u64..*threads {
-                    let receiver_clone = subscribers.pop().unwrap();
-                    let seed: u64 = rng.gen();
-                    task_handles.push(run_thread(seed, receiver_clone, address.clone(), u64::MAX));
-                }
-                join_all(task_handles).await;
+#[tokio::main]
+async fn main() -> color_eyre::Result<()> {
+    tracing_subscriber::fmt::init();
+    color_eyre::install()?;
+    dotenvy::dotenv().ok();
+    let cli = Cli::parse();
+    // TODO: Insert Packets that were successful at crashing brokers previously into the packet_queue. Maybe via proc macro, so it's done at compile-time?
+    PACKET_QUEUE
+        .set(Arc::new(RwLock::new(PacketQueue::default())))
+        .unwrap();
+    match &cli.subcommand {
+        SubCommands::Fuzz { threads } => {
+            // This receiver is necessary to dump the packets once the broker is stopped
+            let (sender, _) = tokio::sync::broadcast::channel(1);
+            let mut subscribers = vec![];
+            for _ in 0..*threads {
+                subscribers.push(sender.subscribe());
             }
-            SubCommands::Replay { sequential } => {
-                // Iterate through all fuzzing_{}.txt files and replay them one after another
-                let mut files = fs::read_dir("./threads")
-                    .await
-                    .expect("Failed to find threads folder. Cannot Replay");
-                let mut filtered_files = vec![];
-                trace!(
-                    "Found files: {:?} in folder {:?}",
-                    files,
-                    std::env::current_dir()
-                );
+            start_supervised_process(sender, cli.broker_command).await?;
+            let address = cli.target.clone();
+            let mut tcpstream = TcpStream::connect(&address).await?;
+            test_connection(&mut tcpstream).await?;
+            info!("Connection established, starting fuzzing!");
+            let mut rng = thread_rng();
+            let _ = fs::create_dir("./threads").await;
+            let mut task_handles = vec![];
+            for _ in 0u64..*threads {
+                let receiver_clone = subscribers.pop().unwrap();
+                let seed: u64 = rng.gen();
+                task_handles.push(run_thread(seed, receiver_clone, address.clone(), u64::MAX));
+            }
+            join_all(task_handles).await;
+        }
+        SubCommands::Replay { sequential } => {
+            // Iterate through all fuzzing_{}.txt files and replay them one after another
+            let mut files = fs::read_dir("./threads")
+                .await
+                .expect("Failed to find threads folder. Cannot Replay");
+            let mut filtered_files = vec![];
+            trace!(
+                "Found files: {:?} in folder {:?}",
+                files,
+                std::env::current_dir()
+            );
 
-                while let Some(entry) = files.next_entry().await? {
-                    let path = entry.path();
-                    let path_str = path.to_string_lossy().to_string();
-                    if path_str.starts_with("./threads/fuzzing_") && path_str.ends_with(".txt") {
-                        filtered_files.push(path_str);
+            while let Some(entry) = files.next_entry().await? {
+                let path = entry.path();
+                let path_str = path.to_string_lossy().to_string();
+                if path_str.starts_with("./threads/fuzzing_") && path_str.ends_with(".txt") {
+                    filtered_files.push(path_str);
+                }
+            }
+            trace!("Found {} files", filtered_files.len());
+            let (sender, receiver) = tokio::sync::broadcast::channel::<()>(1);
+            let mut subscribers = vec![];
+            for _ in 0..filtered_files.len() {
+                subscribers.push(sender.subscribe());
+            }
+            start_supervised_process(sender, cli.broker_command).await?;
+            let mut tcpstream = TcpStream::connect(&cli.target).await?;
+            test_connection(&mut tcpstream).await?;
+            debug!("Connection established");
+            debug!("Starting replay with {} seeds", filtered_files.len());
+            let mut threads = vec![];
+            for file in filtered_files {
+                let receiver_clone = subscribers.pop().unwrap();
+                let seed_and_iterations: SeedAndIterations =
+                    toml::from_str(&fs::read_to_string(file).await?)?;
+                threads.push(run_thread(
+                    u64::from_str(&seed_and_iterations.seed).unwrap(),
+                    receiver_clone,
+                    cli.target.clone(),
+                    u64::from_str(&seed_and_iterations.iterations).unwrap(),
+                ));
+            }
+            // TODO: Sequential replay
+            if *sequential {
+                for (index, thread) in threads.into_iter().enumerate() {
+                    info!("Replaying thread number {}", index);
+                    thread.await;
+                    if !receiver.is_empty() {
+                        info!("Crashing seed found!");
+                        break;
                     }
                 }
-                trace!("Found {} files", filtered_files.len());
-                let (sender, receiver) = tokio::sync::broadcast::channel::<()>(1);
-                let mut subscribers = vec![];
-                for _ in 0..filtered_files.len() {
-                    subscribers.push(sender.subscribe());
-                }
-                start_supervised_process(sender, cli.broker_command).await?;
-                let mut tcpstream = TcpStream::connect(&cli.target).await?;
-                test_connection(&mut tcpstream).await?;
-                debug!("Connection established");
-                debug!("Starting replay with {} seeds", filtered_files.len());
-                let mut threads = vec![];
-                for file in filtered_files {
-                    let receiver_clone = subscribers.pop().unwrap();
-                    let seed_and_iterations: SeedAndIterations =
-                        toml::from_str(&fs::read_to_string(file).await?)?;
-                    threads.push(run_thread(
-                        u64::from_str(&seed_and_iterations.seed).unwrap(),
-                        receiver_clone,
-                        cli.target.clone(),
-                        u64::from_str(&seed_and_iterations.iterations).unwrap(),
-                    ));
-                }
-                // TODO: Sequential replay
-                if *sequential {
-                    for (index, thread) in threads.into_iter().enumerate() {
-                        info!("Replaying thread number {}", index);
-                        thread.await;
-                        if !receiver.is_empty() {
-                            info!("Crashing seed found!");
-                            break;
-                        }
-                    }
-                } else {
-                    join_all(threads).await;
-                }
+            } else {
+                join_all(threads).await;
             }
         }
-        Ok(())
-    })
+    }
+    Ok(())
 }
