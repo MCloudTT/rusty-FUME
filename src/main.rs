@@ -107,7 +107,7 @@ enum SubCommands {
         threads: u64,
     },
     Replay {
-        #[arg(short, long, default_value_t = true)]
+        #[arg(short, long, default_value_t = false)]
         sequential: bool,
     },
 }
@@ -124,7 +124,7 @@ async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
-    // TODO: Insert Packets that were successful at crashing brokers previously into the packet_queue. Maybe via proc macro, so it's done at compile-time?
+    // TODO: Insert Packets that were successful at crashing brokers previously into the packet_queue. Maybe via macro, so it's done at compile-time?
     PACKET_QUEUE
         .set(Arc::new(RwLock::new(PacketQueue::default())))
         .unwrap();
@@ -193,7 +193,6 @@ async fn main() -> color_eyre::Result<()> {
                     u64::from_str(&seed_and_iterations.iterations).unwrap(),
                 ));
             }
-            // TODO: Sequential replay
             if *sequential {
                 for (index, thread) in threads.into_iter().enumerate() {
                     info!("Replaying thread number {}", index);
@@ -203,6 +202,7 @@ async fn main() -> color_eyre::Result<()> {
                         break;
                     }
                 }
+                info!("No crash found :/");
             } else {
                 join_all(threads).await;
             }

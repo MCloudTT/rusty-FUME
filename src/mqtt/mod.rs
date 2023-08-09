@@ -9,64 +9,35 @@ use tracing::{debug, info, trace};
 pub(crate) fn generate_auth_packet() -> Vec<u8> {
     unimplemented!("Auth packet not implemented yet. Switch to MQTT V5")
 }
-pub(crate) fn generate_connect_packet() -> Vec<u8> {
-    let mut connect = mqtt::packet::ConnectPacket::new("Hello MQTT Broker");
-    connect.set_will(Some((
-        TopicName::new("topic").unwrap(),
-        vec![
-            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 72, 255, 50, 0, 0, 0,
-        ],
-    )));
-    let mut packet = Vec::new();
-    connect.encode(&mut packet).unwrap();
-    packet
+pub(crate) fn generate_connect_packet() -> [u8; 62] {
+    [
+        16, 60, 0, 4, 77, 81, 84, 84, 4, 4, 0, 0, 0, 17, 72, 101, 108, 108, 111, 32, 77, 81, 84,
+        84, 32, 66, 114, 111, 107, 101, 114, 0, 5, 116, 111, 112, 105, 99, 0, 22, 1, 2, 3, 4, 5, 6,
+        7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 72, 255, 50, 0, 0, 0,
+    ]
 }
 
-pub(crate) fn generate_publish_packet() -> Vec<u8> {
-    let mut publish = mqtt::packet::PublishPacket::new(
-        TopicName::new("topic").unwrap(),
-        QoSWithPacketIdentifier::Level0,
-        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 72, 255, 50, 0, 0, 0],
-    );
-    publish.set_retain(true);
-    let mut packet = Vec::new();
-    publish.encode(&mut packet).unwrap();
-    packet
+pub(crate) fn generate_publish_packet() -> [u8; 27] {
+    [
+        49, 25, 0, 5, 116, 111, 112, 105, 99, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 72, 255, 50,
+        0, 0, 0,
+    ]
 }
 
-pub(crate) fn generate_subscribe_packet() -> Vec<u8> {
-    let subscribe = mqtt::packet::SubscribePacket::new(
-        100,
-        vec![(
-            TopicFilter::new("topic").unwrap(),
-            mqtt::QualityOfService::Level0,
-        )],
-    );
-    let mut packet = Vec::new();
-    subscribe.encode(&mut packet).unwrap();
-    packet
+pub(crate) fn generate_subscribe_packet() -> [u8; 12] {
+    [130, 10, 0, 100, 0, 5, 116, 111, 112, 105, 99, 0]
 }
 
-pub(crate) fn generate_unsubscribe_packet() -> Vec<u8> {
-    let unsubscribe =
-        mqtt::packet::UnsubscribePacket::new(10, vec![TopicFilter::new("topic").unwrap()]);
-    let mut packet = Vec::new();
-    unsubscribe.encode(&mut packet).unwrap();
-    packet
+pub(crate) fn generate_unsubscribe_packet() -> [u8; 11] {
+    [162, 9, 0, 10, 0, 5, 116, 111, 112, 105, 99]
 }
 
-pub(crate) fn generate_disconnect_packet() -> Vec<u8> {
-    let disconnect = mqtt::packet::DisconnectPacket::new();
-    let mut packet = Vec::new();
-    disconnect.encode(&mut packet).unwrap();
-    packet
+pub(crate) fn generate_disconnect_packet() -> [u8; 2] {
+    [224, 0]
 }
 
-pub(crate) fn generate_pingreq_packet() -> Vec<u8> {
-    let pingreq = mqtt::packet::PingreqPacket::new();
-    let mut packet = Vec::new();
-    pingreq.encode(&mut packet).unwrap();
-    packet
+pub(crate) fn generate_pingreq_packet() -> [u8; 2] {
+    [192, 0]
 }
 
 pub(crate) async fn test_connection(stream: &mut impl ByteStream) -> color_eyre::Result<()> {
@@ -163,4 +134,74 @@ async fn known_packet(response_packet: &[u8], input_packet: &Packets) -> bool {
     }
     trace!("Known behavior. We have {} known behaviors", queue.0.len());
     false
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // To not generate these packets over and over again during execution of the markov model, we generate them here and then use them in the functions
+    #[test]
+    fn generate_connect_packet() {
+        let mut connect = mqtt::packet::ConnectPacket::new("Hello MQTT Broker");
+        connect.set_will(Some((
+            TopicName::new("topic").unwrap(),
+            vec![
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 72, 255, 50, 0, 0, 0,
+            ],
+        )));
+        let mut packet = Vec::new();
+        connect.encode(&mut packet).unwrap();
+        println!("{packet:?}");
+    }
+
+    #[test]
+    fn generate_publish_packet() {
+        let mut publish = mqtt::packet::PublishPacket::new(
+            TopicName::new("topic").unwrap(),
+            QoSWithPacketIdentifier::Level0,
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 72, 255, 50, 0, 0, 0],
+        );
+        publish.set_retain(true);
+        let mut packet = Vec::new();
+        publish.encode(&mut packet).unwrap();
+        println!("{packet:?}");
+    }
+
+    #[test]
+    fn generate_subscribe_packet() {
+        let subscribe = mqtt::packet::SubscribePacket::new(
+            100,
+            vec![(
+                TopicFilter::new("topic").unwrap(),
+                mqtt::QualityOfService::Level0,
+            )],
+        );
+        let mut packet = Vec::new();
+        subscribe.encode(&mut packet).unwrap();
+        println!("{packet:?}");
+    }
+
+    #[test]
+    fn generate_unsubscribe_packet() {
+        let unsubscribe =
+            mqtt::packet::UnsubscribePacket::new(10, vec![TopicFilter::new("topic").unwrap()]);
+        let mut packet = Vec::new();
+        unsubscribe.encode(&mut packet).unwrap();
+        println!("{packet:?}");
+    }
+
+    #[test]
+    fn generate_disconnect_packet() {
+        let disconnect = mqtt::packet::DisconnectPacket::new();
+        let mut packet = Vec::new();
+        disconnect.encode(&mut packet).unwrap();
+        println!("{packet:?}");
+    }
+
+    #[test]
+    fn generate_pingreq_packet() {
+        let pingreq = mqtt::packet::PingreqPacket::new();
+        let mut packet = Vec::new();
+        pingreq.encode(&mut packet).unwrap();
+        println!("{packet:?}");
+    }
 }

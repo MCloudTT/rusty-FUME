@@ -44,8 +44,8 @@ pub async fn start_supervised_process(
             if let Ok(Some(status)) = status {
                 sender.send(()).unwrap();
                 info!("Broker process exited with status: {}", status);
-                info!("Last stdout: {:?}", last_stdout);
-                info!("Last stderr: {:?}", last_stderr);
+                info!("Stdout: {:?}", last_stdout);
+                info!("Stderr: {:?}", last_stderr);
                 break;
             }
         }
