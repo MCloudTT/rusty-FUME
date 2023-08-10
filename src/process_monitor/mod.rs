@@ -31,13 +31,15 @@ pub async fn start_supervised_process(
         let mut last_stderr: String = String::new();
         loop {
             if let Ok(Ok(Some(new_stdout))) =
-                timeout(Duration::from_millis(1), stdout_reader.next_line()).await
+                timeout(Duration::from_millis(10), stdout_reader.next_line()).await
             {
-                last_stdout = new_stdout;
+                last_stdout.push('\n');
+                last_stdout.push_str(new_stdout.as_str());
             }
             if let Ok(Ok(Some(new_stderr))) =
-                timeout(Duration::from_millis(1), stderr_reader.next_line()).await
+                timeout(Duration::from_millis(10), stderr_reader.next_line()).await
             {
+                last_stderr.push('\n');
                 last_stderr.push_str(new_stderr.as_str());
             }
             let status = child.try_wait();
