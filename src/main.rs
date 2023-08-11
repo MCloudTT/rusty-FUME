@@ -21,12 +21,13 @@
 use std::cmp::min;
 use std::collections::BTreeMap;
 use std::fmt::Display;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 // TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
 // FIXME: Fix ranges...
 // TODO: Try tokio_uring
 // TODO: Replay threads sequentially
 // TODO: Run this on my server
+// TODO: Performance is rather slow. Probably due to packet pool locking???
 use crate::markov::MAX_PACKETS;
 use crate::mqtt::test_connection;
 use crate::process_monitor::start_supervised_process;
@@ -48,8 +49,6 @@ mod process_monitor;
 mod runtime;
 
 // TODO: All threads should also dump their last packets for fast replaying
-/// Our packet queue, where new observed packets and their corresponding chains are stored
-static PACKET_QUEUE: OnceLock<Arc<RwLock<PacketQueue>>> = OnceLock::new();
 #[derive(Debug, PartialEq, Eq, Hash, Default, Clone)]
 pub struct Packets([Vec<u8>; MAX_PACKETS]);
 impl Display for Packets {
@@ -120,14 +119,12 @@ struct SeedAndIterations {
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
-    tracing_subscriber::fmt::init();
+    console_subscriber::init();
     color_eyre::install()?;
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
     // TODO: Insert Packets that were successful at crashing brokers previously into the packet_queue. Maybe via macro, so it's done at compile-time?
-    PACKET_QUEUE
-        .set(Arc::new(RwLock::new(PacketQueue::default())))
-        .unwrap();
+    let packet_queue = Arc::new(RwLock::new(PacketQueue::default()));
     match &cli.subcommand {
         SubCommands::Fuzz { threads } => {
             // This receiver is necessary to dump the packets once the broker is stopped
@@ -147,7 +144,13 @@ async fn main() -> color_eyre::Result<()> {
             for _ in 0u64..*threads {
                 let receiver_clone = subscribers.pop().unwrap();
                 let seed: u64 = rng.gen();
-                task_handles.push(run_thread(seed, receiver_clone, address.clone(), u64::MAX));
+                task_handles.push(run_thread(
+                    seed,
+                    receiver_clone,
+                    address.clone(),
+                    u64::MAX,
+                    packet_queue.clone(),
+                ));
             }
             join_all(task_handles).await;
         }
@@ -191,6 +194,7 @@ async fn main() -> color_eyre::Result<()> {
                     receiver_clone,
                     cli.target.clone(),
                     u64::from_str(&seed_and_iterations.iterations).unwrap(),
+                    packet_queue.clone(),
                 ));
             }
             if *sequential {

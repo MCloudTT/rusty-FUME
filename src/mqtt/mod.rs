@@ -1,8 +1,8 @@
 use crate::markov::ByteStream;
-use crate::{Packets, PACKET_QUEUE};
-use mqtt::packet::QoSWithPacketIdentifier;
-use mqtt::{Encodable, TopicFilter, TopicName};
+use crate::{PacketQueue, Packets};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 use tokio::time::timeout;
 use tracing::{debug, info, trace};
 // TODO: Maybe we can begin the packet queue with some more interesting packets that triggered bugs in the past from CVEs
@@ -62,19 +62,21 @@ pub(crate) enum SendError {
 pub(crate) async fn send_packets(
     stream: &mut impl ByteStream,
     packets: &Packets,
+    packet_queue: &Arc<RwLock<PacketQueue>>,
 ) -> Result<(), SendError> {
     for packet in packets.0.iter().filter(|p| !p.is_empty()) {
-        send_packet(stream, packet.as_slice(), packets).await?;
+        send_packet(stream, packet.as_slice(), packets, packet_queue).await?;
     }
     Ok(())
 }
 
-const PACKET_TIMEOUT: u64 = 700;
+const PACKET_TIMEOUT: u64 = 10;
 
 pub(crate) async fn send_packet(
     stream: &mut impl ByteStream,
     packet: &[u8],
     packets: &Packets,
+    packet_queue: &Arc<RwLock<PacketQueue>>,
 ) -> Result<(), SendError> {
     let write_result = timeout(
         Duration::from_millis(PACKET_TIMEOUT),
@@ -95,7 +97,7 @@ pub(crate) async fn send_packet(
     let res = timeout(Duration::from_millis(PACKET_TIMEOUT), stream.read(&mut buf)).await;
     match res {
         Ok(Ok(p)) => {
-            known_packet(&buf[..p], &packets).await;
+            known_packet(&buf[..p], &packets, packet_queue).await;
             Ok(())
         }
         Err(t) => {
@@ -111,12 +113,15 @@ pub(crate) async fn send_packet(
 }
 
 /// This works by using the response packet as the key in a hashmap. If the packet is already in the hashmap we know that we have seen it before
-async fn known_packet(response_packet: &[u8], input_packet: &Packets) -> bool {
+async fn known_packet(
+    response_packet: &[u8],
+    input_packet: &Packets,
+    packet_queue: &Arc<RwLock<PacketQueue>>,
+) -> bool {
     // TODO: decode the packet and extract user id, payload, topic etc. because those don't matter to see if it is a known packet
     // TODO: More efficient algorithm, maybe Locational Hashing?
-    let queue_lock = PACKET_QUEUE.get().unwrap().clone();
-    let mut queue = queue_lock.write().await;
-    if queue
+    let mut queue_lock = packet_queue.write().await;
+    if queue_lock
         .0
         .insert(
             // Insert the packet in the queue if it's size ignoring trailing zeros is not already in the queue
@@ -132,12 +137,17 @@ async fn known_packet(response_packet: &[u8], input_packet: &Packets) -> bool {
         info!("New behavior discovered: {:?}", input_packet);
         return true;
     }
-    trace!("Known behavior. We have {} known behaviors", queue.0.len());
+    trace!(
+        "Known behavior. We have {} known behaviors",
+        packet_queue.read().await.0.len()
+    );
     false
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mqtt::packet::QoSWithPacketIdentifier;
+    use mqtt::{Encodable, TopicFilter, TopicName};
     // To not generate these packets over and over again during execution of the markov model, we generate them here and then use them in the functions
     #[test]
     fn generate_connect_packet() {

@@ -22,6 +22,7 @@ serde = { version = "1.0.181", features = ["derive"] }
 toml = "0.7.6"
 futures = "0.3.28"
 tokio-uring = "0.4.0"
+console-subscriber = "0.1.10"
 
 [profile.release]
 debug = true

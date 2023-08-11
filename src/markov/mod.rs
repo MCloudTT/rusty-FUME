@@ -23,14 +23,16 @@ use crate::mqtt::{
     generate_publish_packet, generate_subscribe_packet, generate_unsubscribe_packet, send_packets,
     SendError,
 };
-use crate::{Packets, PACKET_QUEUE};
+use crate::{PacketQueue, Packets};
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::Rng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::default::Default;
 use std::fmt::Debug;
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::RwLock;
 use tracing::{debug, trace};
 
 const SEL_FROM_QUEUE: f32 = 0.7;
@@ -116,13 +118,23 @@ where
             previous_packets: Vec::new(),
         }
     }
-    pub(crate) async fn execute(&mut self, mode: Mode, rng: &mut Xoshiro256PlusPlus) {
+    pub(crate) async fn execute(
+        &mut self,
+        mode: Mode,
+        rng: &mut Xoshiro256PlusPlus,
+        packet_queue: &Arc<RwLock<PacketQueue>>,
+    ) {
         while self.state != State::Sf {
-            self.next(mode, rng).await;
+            self.next(mode, rng, packet_queue).await;
             debug!("State: {:?}", self.state);
         }
     }
-    async fn next(&mut self, mode: Mode, rng: &mut Xoshiro256PlusPlus) {
+    async fn next(
+        &mut self,
+        mode: Mode,
+        rng: &mut Xoshiro256PlusPlus,
+        packet_queue: &Arc<RwLock<PacketQueue>>,
+    ) {
         match &self.state {
             State::S0 => match mode {
                 MutationGuided => {
@@ -138,12 +150,12 @@ where
             },
             State::SelectFromQueue => {
                 // Maybe we should use a priority queue in-memory here instead of storing on disk(overhead). Should be measured in the future.
-                let queue = PACKET_QUEUE.get().unwrap().read().await;
-                if queue.0.is_empty() {
+                if packet_queue.read().await.0.is_empty() {
                     self.state = State::ADD(PacketType::CONNECT);
                 } else {
-                    let packet_index = rng.gen_range(0..queue.0.len());
-                    let packet = queue.0.iter().nth(packet_index).unwrap();
+                    let packet_queue_read = packet_queue.read().await;
+                    let packet_index = rng.gen_range(0..packet_queue_read.0.len());
+                    let packet = packet_queue_read.0.iter().nth(packet_index).unwrap();
                     // TODO: Really?
                     self.packets = packet.1.clone().clone();
                     self.state = State::MUTATION;
@@ -206,7 +218,7 @@ where
             }
             State::SEND => {
                 self.previous_packets.push(self.packets.clone());
-                let res = send_packets(&mut self.stream, &self.packets).await;
+                let res = send_packets(&mut self.stream, &self.packets, packet_queue).await;
                 if let Err(e) = res {
                     match e {
                         SendError::Timeout => {}
