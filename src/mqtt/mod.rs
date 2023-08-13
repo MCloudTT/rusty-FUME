@@ -2,6 +2,7 @@ use crate::markov::ByteStream;
 use crate::{PacketQueue, Packets};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
 use tracing::{debug, info, trace};
@@ -70,7 +71,7 @@ pub(crate) async fn send_packets(
     Ok(())
 }
 
-const PACKET_TIMEOUT: u64 = 10;
+const PACKET_TIMEOUT: u64 = 100;
 
 pub(crate) async fn send_packet(
     stream: &mut impl ByteStream,
@@ -97,7 +98,7 @@ pub(crate) async fn send_packet(
     let res = timeout(Duration::from_millis(PACKET_TIMEOUT), stream.read(&mut buf)).await;
     match res {
         Ok(Ok(p)) => {
-            known_packet(&buf[..p], &packets, packet_queue).await;
+            known_packet(&buf[..p], packets, packet_queue).await;
             Ok(())
         }
         Err(t) => {
@@ -120,22 +121,21 @@ async fn known_packet(
 ) -> bool {
     // TODO: decode the packet and extract user id, payload, topic etc. because those don't matter to see if it is a known packet
     // TODO: More efficient algorithm, maybe Locational Hashing?
-    let mut queue_lock = packet_queue.write().await;
-    if queue_lock
-        .0
-        .insert(
-            // Insert the packet in the queue if it's size ignoring trailing zeros is not already in the queue
-            response_packet
-                .iter()
-                .rev()
-                .skip_while(|&&x| x == 0)
-                .count(),
-            input_packet.clone(),
-        )
-        .is_none()
-    {
-        info!("New behavior discovered: {:?}", input_packet);
-        return true;
+    let packet_len = response_packet
+        .iter()
+        .rev()
+        .skip_while(|&&x| x == 0)
+        .count();
+    let mut queue_lock = packet_queue.read().await;
+    if queue_lock.0.contains_key(&packet_len) {
+        info!(
+            "New behavior discoovered, adding it to the queue: {:?}",
+            input_packet
+        );
+        drop(queue_lock);
+        let mut queue_lock = packet_queue.write().await;
+        queue_lock.0.insert(packet_len, input_packet.clone());
+        info!("Unlocking queue...");
     }
     trace!(
         "Known behavior. We have {} known behaviors",

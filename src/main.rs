@@ -94,7 +94,8 @@ struct Cli {
     target: String,
     #[arg(short, long)]
     broker_command: String,
-    #[arg(short, long, default_value = "500")]
+    // TODO: Make the timeout configurable
+    #[arg(short, long, default_value = "200")]
     timeout: u64,
 }
 
