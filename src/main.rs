@@ -106,11 +106,7 @@ impl PacketQueue {
     async fn read_from_file(path: impl AsRef<Path>) -> color_eyre::Result<Self> {
         let mut content = String::new();
         File::open(path).await?.read_to_string(&mut content).await?;
-        let packets: Vec<Packets> = toml::from_str(&content)?;
-        let mut queue = Self::default();
-        for packet in packets {
-            queue.inner.insert(packet.inner[0].clone(), packet);
-        }
+        let queue = toml::from_str(&content)?;
         Ok(queue)
     }
 }
