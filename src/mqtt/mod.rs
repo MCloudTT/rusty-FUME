@@ -65,7 +65,7 @@ pub(crate) async fn send_packets(
     packets: &Packets,
     packet_queue: &Arc<RwLock<PacketQueue>>,
 ) -> Result<(), SendError> {
-    for packet in packets.0.iter().filter(|p| !p.is_empty()) {
+    for packet in packets.inner.iter().filter(|p| !p.is_empty()) {
         send_packet(stream, packet.as_slice(), packets, packet_queue).await?;
     }
     Ok(())
@@ -122,18 +122,20 @@ async fn known_packet(
     // TODO: decode the packet and extract user id, payload, topic etc. because those don't matter to see if it is a known packet
     let mut queue_lock = packet_queue.read().await;
     let response_packet = response_packet.to_vec();
-    if !queue_lock.0.contains_key(&response_packet) {
+    if !queue_lock.inner.contains_key(&response_packet) {
         info!(
             "New behavior discovered, adding it to the queue: {:?}",
             input_packet
         );
         drop(queue_lock);
         let mut queue_lock = packet_queue.write().await;
-        queue_lock.0.insert(response_packet, input_packet.clone());
+        queue_lock
+            .inner
+            .insert(response_packet, input_packet.clone());
     }
     trace!(
         "Known behavior. We have {} known behaviors",
-        packet_queue.read().await.0.len()
+        packet_queue.read().await.inner.len()
     );
     false
 }

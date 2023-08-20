@@ -150,12 +150,12 @@ where
             },
             State::SelectFromQueue => {
                 // Maybe we should use a priority queue in-memory here instead of storing on disk(overhead). Should be measured in the future.
-                if packet_queue.read().await.0.is_empty() {
+                if packet_queue.read().await.inner.is_empty() {
                     self.state = State::ADD(PacketType::CONNECT);
                 } else {
                     let packet_queue_read = packet_queue.read().await;
-                    let packet_index = rng.gen_range(0..packet_queue_read.0.len());
-                    let packet = packet_queue_read.0.iter().nth(packet_index).unwrap();
+                    let packet_index = rng.gen_range(0..packet_queue_read.inner.len());
+                    let packet = packet_queue_read.inner.iter().nth(packet_index).unwrap();
                     // TODO: Really?
                     self.packets = packet.1.clone().clone();
                     self.state = State::MUTATION;

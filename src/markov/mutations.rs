@@ -7,7 +7,10 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 pub fn inject(packets: &mut Packets, rng: &mut Xoshiro256PlusPlus, inject_type: &InjectType) {
     let packets_size = packets.size();
     debug_assert!(packets_size > 0, "Packet size should be greater than 0");
-    let packet = packets.0.get_mut(rng.gen_range(0..packets_size)).unwrap();
+    let packet = packets
+        .inner
+        .get_mut(rng.gen_range(0..packets_size))
+        .unwrap();
     match inject_type {
         InjectType::Single => inject_single(packet, rng),
         InjectType::BOF => inject_bof(packet, rng),
@@ -47,14 +50,20 @@ fn inject_single(packet: &mut Vec<u8>, rng: &mut Xoshiro256PlusPlus) {
 
 pub fn delete(packets: &mut Packets, rng: &mut Xoshiro256PlusPlus) {
     let packets_size = packets.size();
-    let packet = packets.0.get_mut(rng.gen_range(0..packets_size)).unwrap();
+    let packet = packets
+        .inner
+        .get_mut(rng.gen_range(0..packets_size))
+        .unwrap();
     let idx = rng.gen_range(0..packet.len());
     packet.remove(idx);
 }
 
 pub fn swap(packets: &mut Packets, rng: &mut Xoshiro256PlusPlus) {
     let packets_size = packets.size();
-    let packet = packets.0.get_mut(rng.gen_range(0..packets_size)).unwrap();
+    let packet = packets
+        .inner
+        .get_mut(rng.gen_range(0..packets_size))
+        .unwrap();
     let idx = rng.gen_range(0..packet.len());
     let byte = rng.gen::<u8>();
     packet[idx] = byte;

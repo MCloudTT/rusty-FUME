@@ -36,6 +36,10 @@ use clap::{Parser, Subcommand};
 use futures::future::join_all;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
+use serde_with::formats::{CommaSeparator, SpaceSeparator};
+use serde_with::hex::Hex;
+use serde_with::StringWithSeparator;
+use serde_with::{serde_as, DisplayFromStr};
 use std::str::FromStr;
 use tokio::fs;
 use tokio::fs::File;
@@ -51,15 +55,19 @@ mod process_monitor;
 mod runtime;
 
 // TODO: All threads should also dump their last packets for fast replaying
-#[derive(Debug, PartialEq, Eq, Hash, Default, Clone, Serialize, Deserialize)]
-pub struct Packets([Vec<u8>; MAX_PACKETS]);
+#[serde_as]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Default, Serialize, Deserialize)]
+pub struct Packets {
+    #[serde_as(as = "[StringWithSeparator::<CommaSeparator, u8>; MAX_PACKETS]")]
+    inner: [Vec<u8>; MAX_PACKETS],
+}
 impl Display for Packets {
     // Hex dump the packets
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = String::new();
         for i in 0..MAX_PACKETS {
-            if !self.0[i].is_empty() {
-                s.push_str(hex::encode(&self.0[i]).as_str());
+            if !self.inner[i].is_empty() {
+                s.push_str(hex::encode(&self.inner[i]).as_str());
                 s.push('\n');
             }
         }
@@ -71,21 +79,28 @@ impl Packets {
         // Search the first free slot and insert it there
         let size = self.size();
         if size < MAX_PACKETS {
-            self.0[size] = packet.clone();
+            self.inner[size] = packet.clone();
         }
     }
     pub fn is_full(&self) -> bool {
-        self.0.iter().all(|x| !x.is_empty())
+        self.inner.iter().all(|x| !x.is_empty())
     }
     pub fn size(&self) -> usize {
-        min(1, self.0.iter().filter(|x| !x.is_empty()).count())
+        min(1, self.inner.iter().filter(|x| !x.is_empty()).count())
     }
     pub fn new() -> Self {
-        Self(Default::default())
+        Self {
+            inner: Default::default(),
+        }
     }
 }
-#[derive(Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-struct PacketQueue(BTreeMap<Vec<u8>, Packets>);
+
+#[serde_as]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Default, Serialize, Deserialize)]
+struct PacketQueue {
+    #[serde_as(as = "BTreeMap<StringWithSeparator::<CommaSeparator, u8>, _>")]
+    inner: BTreeMap<Vec<u8>, Packets>,
+}
 
 impl PacketQueue {
     async fn read_from_file(path: impl AsRef<Path>) -> color_eyre::Result<Self> {
@@ -94,7 +109,7 @@ impl PacketQueue {
         let packets: Vec<Packets> = toml::from_str(&content)?;
         let mut queue = Self::default();
         for packet in packets {
-            queue.0.insert(packet.0[0].clone(), packet);
+            queue.inner.insert(packet.inner[0].clone(), packet);
         }
         Ok(queue)
     }
@@ -171,7 +186,7 @@ async fn main() -> color_eyre::Result<()> {
                 ));
             }
             join_all(task_handles).await;
-            let serialized_pkg_pool = toml::to_string(&packet_queue.write().await.0);
+            let serialized_pkg_pool = toml::to_string(&packet_queue.write().await.clone());
             info!("Packet Queue: {:?}", serialized_pkg_pool);
         }
         SubCommands::Replay { sequential } => {
@@ -233,4 +248,16 @@ async fn main() -> color_eyre::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_serialize_packet_queue() {
+        let mut packet_queue = PacketQueue::default();
+        packet_queue.inner.insert(vec![0x10], Packets::default());
+        let serialized = toml::to_string(&packet_queue).unwrap();
+        println!("{}", serialized);
+    }
 }
