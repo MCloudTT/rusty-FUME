@@ -155,8 +155,7 @@ async fn main() -> color_eyre::Result<()> {
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
     let packet_queue = Arc::new(RwLock::new(
-        // PacketQueue::read_from_file("./packet_pool.toml").await?,
-        PacketQueue::default(),
+        PacketQueue::read_from_file("./packet_pool.toml").await?,
     ));
     match &cli.subcommand {
         SubCommands::Fuzz { threads } => {
