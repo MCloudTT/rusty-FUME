@@ -21,13 +21,13 @@
 use std::cmp::min;
 use std::collections::BTreeMap;
 use std::fmt::Display;
+use std::path::Path;
 use std::sync::Arc;
 // TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
 // FIXME: Fix ranges...
-// TODO: Try tokio_uring
-// TODO: Replay threads sequentially
 // TODO: Run this on my server
-// TODO: Performance is rather slow. Probably due to packet pool locking???
+// TODO: crtl_c handling
+// TODO: Try fuzzing a basic mongoose server?
 use crate::markov::MAX_PACKETS;
 use crate::mqtt::test_connection;
 use crate::process_monitor::start_supervised_process;
@@ -38,6 +38,8 @@ use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use tokio::fs;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
 use tracing::{debug, info, trace};
@@ -49,7 +51,7 @@ mod process_monitor;
 mod runtime;
 
 // TODO: All threads should also dump their last packets for fast replaying
-#[derive(Debug, PartialEq, Eq, Hash, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Default, Clone, Serialize, Deserialize)]
 pub struct Packets([Vec<u8>; MAX_PACKETS]);
 impl Display for Packets {
     // Hex dump the packets
@@ -82,8 +84,21 @@ impl Packets {
         Self(Default::default())
     }
 }
-#[derive(Debug, PartialEq, Eq, Hash, Default)]
-struct PacketQueue(BTreeMap<usize, Packets>);
+#[derive(Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+struct PacketQueue(BTreeMap<Vec<u8>, Packets>);
+
+impl PacketQueue {
+    async fn read_from_file(path: impl AsRef<Path>) -> color_eyre::Result<Self> {
+        let mut content = String::new();
+        File::open(path).await?.read_to_string(&mut content).await?;
+        let packets: Vec<Packets> = toml::from_str(&content)?;
+        let mut queue = Self::default();
+        for packet in packets {
+            queue.0.insert(packet.0[0].clone(), packet);
+        }
+        Ok(queue)
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -124,8 +139,10 @@ async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     dotenvy::dotenv().ok();
     let cli = Cli::parse();
-    // TODO: Insert Packets that were successful at crashing brokers previously into the packet_queue. Maybe via macro, so it's done at compile-time?
-    let packet_queue = Arc::new(RwLock::new(PacketQueue::default()));
+    let packet_queue = Arc::new(RwLock::new(
+        // PacketQueue::read_from_file("./packet_pool.toml").await?,
+        PacketQueue::default(),
+    ));
     match &cli.subcommand {
         SubCommands::Fuzz { threads } => {
             // This receiver is necessary to dump the packets once the broker is stopped
@@ -154,6 +171,8 @@ async fn main() -> color_eyre::Result<()> {
                 ));
             }
             join_all(task_handles).await;
+            let serialized_pkg_pool = toml::to_string(&packet_queue.write().await.0);
+            info!("Packet Queue: {:?}", serialized_pkg_pool);
         }
         SubCommands::Replay { sequential } => {
             // Iterate through all fuzzing_{}.txt files and replay them one after another

@@ -71,7 +71,7 @@ pub(crate) async fn send_packets(
     Ok(())
 }
 
-const PACKET_TIMEOUT: u64 = 100;
+const PACKET_TIMEOUT: u64 = 30;
 
 pub(crate) async fn send_packet(
     stream: &mut impl ByteStream,
@@ -120,22 +120,16 @@ async fn known_packet(
     packet_queue: &Arc<RwLock<PacketQueue>>,
 ) -> bool {
     // TODO: decode the packet and extract user id, payload, topic etc. because those don't matter to see if it is a known packet
-    // TODO: More efficient algorithm, maybe Locational Hashing?
-    let packet_len = response_packet
-        .iter()
-        .rev()
-        .skip_while(|&&x| x == 0)
-        .count();
     let mut queue_lock = packet_queue.read().await;
-    if queue_lock.0.contains_key(&packet_len) {
+    let response_packet = response_packet.to_vec();
+    if !queue_lock.0.contains_key(&response_packet) {
         info!(
-            "New behavior discoovered, adding it to the queue: {:?}",
+            "New behavior discovered, adding it to the queue: {:?}",
             input_packet
         );
         drop(queue_lock);
         let mut queue_lock = packet_queue.write().await;
-        queue_lock.0.insert(packet_len, input_packet.clone());
-        info!("Unlocking queue...");
+        queue_lock.0.insert(response_packet, input_packet.clone());
     }
     trace!(
         "Known behavior. We have {} known behaviors",

@@ -32,6 +32,9 @@ pub(crate) async fn run_thread(
                     "Error connecting to broker: {:?}. See recommendations",
                     new_tcpstream
                 );
+                if !receiver_clone.is_empty() {
+                    break;
+                }
                 // So we'll just have a "back-off" sleep here
                 sleep(Duration::from_millis(100)).await;
                 continue;
