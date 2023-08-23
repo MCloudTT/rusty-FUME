@@ -1,5 +1,12 @@
+![GitHub](https://img.shields.io/github/license/mcloudtt/rusty-FUME)
+![GitHub Workflow Status (with event)](https://img.shields.io/github/actions/workflow/status/mcloudtt/rusty-FUME/ci.yml?label=ci)
+![GitHub issues](https://img.shields.io/github/issues/mcloudtt/rusty-FUME) 
+![GitHub pull requests](https://img.shields.io/github/issues-pr/mcloudtt/rusty-FUME)
+![GitHub Repo stars](https://img.shields.io/github/stars/mcloudtt/rusty-FUME) 
+![GitHub forks](https://img.shields.io/github/forks/mcloudtt/rusty-FUME)
 # rusty-FUME
 A high-performance MQTT network Fuzzer.
+
 This is an implementation of [FUME-Fuzzing-MQTT-Brokers](https://github.com/PBearson/FUME-Fuzzing-MQTT-Brokers/) in Rust.
 
 # Running the project
@@ -14,6 +21,7 @@ cargo run -r -- --broker-command "YOUR_BROKER_START_COMMAND" replay
 
 # Recommendations
 **Note: DO NOT USE THIS ON A PRODUCTION SERVER AS IT MAY HAVE UNINTENDED SIDE EFFECTS**
+
 That being said, it works fine on my local machine. I recommend running the following commands before fuzzing to prevent the kernel from running out of ports:
 ```
 sudo sysctl -w net.ipv4.tcp_fin_timeout=5
