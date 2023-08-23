@@ -21,6 +21,12 @@ sudo sysctl -w net.ipv4.tcp_tw_reuse=1
 sysctl -w net.ipv4.ip_local_port_range="1024 65535"
 ```
 
+## Contributing
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+
+## Compatibility
+Currently, the Windows build is failing in the ci, however i've only tested this on Linux so far. Maybe it works on Windows, maybe it doesn't. I don't know. Pull Requests to fix this if necessary are welcome.
+
 ## Credits
 - [FUME: Fuzzing Message Queuing Telemetry Transport Brokers](https://ieeexplore.ieee.org/abstract/document/9796755)
 - [FUME-Fuzzing-MQTT-Brokers](https://github.com/PBearson/FUME-Fuzzing-MQTT-Brokers)
