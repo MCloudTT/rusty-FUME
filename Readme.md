@@ -14,9 +14,9 @@ cargo run -r -- --broker-command "YOUR_BROKER_START_COMMAND" replay
 
 # Recommendations
 **Note: DO NOT USE THIS ON A PRODUCTION SERVER AS IT MAY HAVE UNINTENDED SIDE EFFECTS**
-That being said, it works fine on my local machine. I recommend running the following commands before fuzzing:
+That being said, it works fine on my local machine. I recommend running the following commands before fuzzing to prevent the kernel from running out of ports:
 ```
-sudo sysctl -w net.ipv4.tcp_fin_timeout=1
+sudo sysctl -w net.ipv4.tcp_fin_timeout=5
 sudo sysctl -w net.ipv4.tcp_tw_reuse=1
 sysctl -w net.ipv4.ip_local_port_range="1024 65535"
 ```

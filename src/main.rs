@@ -25,9 +25,9 @@ use std::path::Path;
 use std::sync::Arc;
 // TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
 // FIXME: Fix ranges...
-// TODO: Run this on my server
 // TODO: crtl_c handling
 // TODO: Try fuzzing a basic mongoose server?
+// TODO: Fuzz mosquitto compiled with sanitizers
 use crate::markov::MAX_PACKETS;
 use crate::mqtt::test_connection;
 use crate::process_monitor::start_supervised_process;
