@@ -96,7 +96,7 @@ pub async fn iterations_tracker(threads: usize, mut it_receiver: MpscReceiver<u6
         }
         let sum: u64 = iteration_buffer.iter().sum();
         let elapsed = start.elapsed().as_millis();
-        let it_per_second = (sum - last_iterations).saturating_div(elapsed as u64) * 100;
+        let it_per_second = (sum - last_iterations) as f64 / elapsed as f64 * 1000f64;
         info!("{} it/s", it_per_second);
         last_iterations = sum;
     }
