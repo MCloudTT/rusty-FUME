@@ -123,10 +123,8 @@ async fn known_packet(
     let mut queue_lock = packet_queue.read().await;
     let response_packet = response_packet.to_vec();
     if !queue_lock.inner.contains_key(&response_packet) {
-        info!(
-            "New behavior discovered, adding it to the queue: {:?}",
-            input_packet
-        );
+        info!("New behavior discovered, adding it to the queue",);
+        debug!("Response packet: {:?}", response_packet);
         drop(queue_lock);
         let mut queue_lock = packet_queue.write().await;
         queue_lock
