@@ -90,7 +90,7 @@ pub(crate) async fn send_packet(
             trace!("Timeout: {:?}", t);
         }
         Ok(Err(e)) => {
-            debug!("Send error: {:?}", e);
+            trace!("Send error: {:?}", e);
             return Err(SendError::SendErr);
         }
     }

@@ -31,21 +31,22 @@ use std::sync::Arc;
 use crate::markov::MAX_PACKETS;
 use crate::mqtt::test_connection;
 use crate::process_monitor::start_supervised_process;
-use crate::runtime::run_thread;
+use crate::runtime::{iterations_tracker, run_thread};
 use clap::{Parser, Subcommand};
 use futures::future::join_all;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use serde_with::formats::{CommaSeparator, SpaceSeparator};
-use serde_with::hex::Hex;
+use serde_with::formats::CommaSeparator;
+use serde_with::serde_as;
 use serde_with::StringWithSeparator;
-use serde_with::{serde_as, DisplayFromStr};
 use std::str::FromStr;
-use tokio::fs;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::channel as mpsc_channel;
 use tokio::sync::RwLock;
+use tokio::time::sleep;
+use tokio::{fs, task};
 use tracing::{debug, info, trace};
 
 mod markov;
@@ -155,6 +156,8 @@ async fn main() -> color_eyre::Result<()> {
     ));
     match &cli.subcommand {
         SubCommands::Fuzz { threads } => {
+            // The channel used for iteration counting
+            let (it_sender, mut it_receiver) = mpsc_channel::<u64>(*threads as usize);
             // This receiver is necessary to dump the packets once the broker is stopped
             let (sender, _) = tokio::sync::broadcast::channel(1);
             let mut subscribers = vec![];
@@ -170,6 +173,7 @@ async fn main() -> color_eyre::Result<()> {
             let _ = fs::create_dir("./threads").await;
             let mut task_handles = vec![];
             for _ in 0u64..*threads {
+                let it_sender_clone = it_sender.clone();
                 let receiver_clone = subscribers.pop().unwrap();
                 let seed: u64 = rng.gen();
                 task_handles.push(run_thread(
@@ -178,13 +182,20 @@ async fn main() -> color_eyre::Result<()> {
                     address.clone(),
                     u64::MAX,
                     packet_queue.clone(),
+                    it_sender_clone,
                 ));
             }
+            // Track it/s
+            let threads = *threads as usize;
+            task::spawn(async move {
+                iterations_tracker(threads, it_receiver).await;
+            });
             join_all(task_handles).await;
             let serialized_pkg_pool = toml::to_string(&packet_queue.write().await.clone());
-            info!("Packet Queue: {:?}", serialized_pkg_pool);
+            trace!("Packet Queue: {:?}", serialized_pkg_pool);
         }
         SubCommands::Replay { sequential } => {
+            // TODO: When replaying the tasks may get loaded in different order
             // Iterate through all fuzzing_{}.txt files and replay them one after another
             let mut files = fs::read_dir("./threads")
                 .await
@@ -215,6 +226,7 @@ async fn main() -> color_eyre::Result<()> {
             debug!("Connection established");
             debug!("Starting replay with {} seeds", filtered_files.len());
             let mut threads = vec![];
+            let unused_it_channel = mpsc_channel::<u64>(filtered_files.len()).0;
             for file in filtered_files {
                 let receiver_clone = subscribers.pop().unwrap();
                 let seed_and_iterations: SeedAndIterations =
@@ -225,6 +237,7 @@ async fn main() -> color_eyre::Result<()> {
                     cli.target.clone(),
                     u64::from_str(&seed_and_iterations.iterations).unwrap(),
                     packet_queue.clone(),
+                    unused_it_channel.clone(),
                 ));
             }
             if *sequential {
@@ -233,7 +246,7 @@ async fn main() -> color_eyre::Result<()> {
                     thread.await;
                     if !receiver.is_empty() {
                         info!("Crashing seed found!");
-                        break;
+                        return Ok(());
                     }
                 }
                 info!("No crash found :/");

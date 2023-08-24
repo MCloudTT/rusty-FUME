@@ -33,7 +33,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::RwLock;
-use tracing::{debug, trace};
+use tracing::*;
 
 const SEL_FROM_QUEUE: f32 = 0.7;
 const PACKET_APPEND_CHANCE: f32 = 0.2;
@@ -126,7 +126,7 @@ where
     ) {
         while self.state != State::Sf {
             self.next(mode, rng, packet_queue).await;
-            debug!("State: {:?}", self.state);
+            trace!("State: {:?}", self.state);
         }
     }
     async fn next(
@@ -230,7 +230,7 @@ where
                         }
                     }
                 } else {
-                    debug!("Sent packet successfully");
+                    trace!("Sent packet successfully");
                 }
                 if rng.gen_range(0f32..1f32) > MUT_AFTER_SEND || res.is_err() {
                     self.state = State::Sf;

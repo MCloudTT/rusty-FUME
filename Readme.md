@@ -35,6 +35,12 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 ## Compatibility
 Currently, the Windows build is failing in the ci, however i've only tested this on Linux so far. Maybe it works on Windows, maybe it doesn't. I don't know. Pull Requests to fix this if necessary are welcome.
 
+## Trophies
+All bugs found with this software. If you find a bug using rusty-FUME, please open an issue and i'll add it to the list.
+- [FlashMQ Null pointer dereference](https://github.com/halfgaar/FlashMQ/commit/eb3acf88771af3eeddf086e4c9dc51d703456eee)
+
+
+
 ## Credits
 - [FUME: Fuzzing Message Queuing Telemetry Transport Brokers](https://ieeexplore.ieee.org/abstract/document/9796755)
 - [FUME-Fuzzing-MQTT-Brokers](https://github.com/PBearson/FUME-Fuzzing-MQTT-Brokers)
