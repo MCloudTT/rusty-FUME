@@ -1,4 +1,4 @@
-use crate::markov::StateMachine;
+use crate::markov::{ByteStream, StateMachine};
 use crate::{PacketQueue, SeedAndIterations};
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
@@ -11,7 +11,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
 use tokio::time::sleep;
 use tokio::{fs, task};
-use tracing::{debug, error, info};
+use tracing::*;
 
 // TODO: Change address to allow other kinds of Streams
 /// Runs a task that connects to the broker and fuzzes it
@@ -24,7 +24,6 @@ pub(crate) async fn run_thread(
     it_sender_clone: Sender<u64>,
 ) {
     let task_handle = task::spawn(async move {
-        let start_time = std::time::Instant::now();
         let mut last_packets = Vec::new();
         let mut counter: u64 = 0;
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
@@ -75,7 +74,7 @@ pub(crate) async fn run_thread(
         }
         // Dump the packet we crashed on
         let _ = fs::create_dir("crashes").await;
-        let res = fs::write(
+        let _ = fs::write(
             format!("crashes/crash_{}.txt", seed),
             format!("{:?}", last_packets),
         )
@@ -92,7 +91,11 @@ pub async fn iterations_tracker(threads: usize, mut it_receiver: MpscReceiver<u6
         let start = std::time::Instant::now();
         let mut iteration_buffer = vec![0; threads];
         for i in 1..threads {
-            iteration_buffer[i] = it_receiver.recv().await.unwrap();
+            let value = it_receiver.recv().await;
+            match value {
+                Some(v) => iteration_buffer[i] = v,
+                None => break,
+            }
         }
         let sum: u64 = iteration_buffer.iter().sum();
         let elapsed = start.elapsed().as_millis();

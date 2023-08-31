@@ -18,44 +18,42 @@
 //! - S2: Inject/Delete/Mutate the current chain or go to SEND
 //! - SEND: Send the current chain and either go to Sf or S2
 //! Once they get to S2 they behave the same way.
-use std::cmp::min;
-use std::collections::BTreeMap;
-use std::fmt::Display;
-use std::path::Path;
-use std::sync::Arc;
-// TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
-// FIXME: Fix ranges...
-// TODO: crtl_c handling
-// TODO: Try fuzzing a basic mongoose server?
-// TODO: Fuzz mosquitto compiled with sanitizers
 use crate::markov::MAX_PACKETS;
 use crate::mqtt::test_connection;
 use crate::process_monitor::start_supervised_process;
 use crate::runtime::{iterations_tracker, run_thread};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use futures::future::join_all;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use serde_with::formats::CommaSeparator;
 use serde_with::serde_as;
 use serde_with::StringWithSeparator;
+use std::cmp::min;
+use std::collections::BTreeMap;
+use std::fmt::Display;
+use std::path::Path;
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::channel as mpsc_channel;
 use tokio::sync::RwLock;
-use tokio::time::sleep;
 use tokio::{fs, task};
 use tracing::{debug, info, trace};
 
 mod markov;
 pub mod mqtt;
+mod network;
 mod packet_pool;
 mod process_monitor;
 mod runtime;
-
-// TODO: All threads should also dump their last packets for fast replaying
+// TODO: Clean up main
+// TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
+// TODO: Try fuzzing a basic mongoose server?
+// TODO: Fuzz mosquitto compiled with sanitizers
+// TODO: Support TLS, WS and QUIC
 #[serde_as]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Default, Serialize, Deserialize)]
 pub struct Packets {
@@ -122,7 +120,7 @@ struct Cli {
     #[arg(short, long)]
     broker_command: String,
     // TODO: Make the timeout configurable
-    #[arg(short, long, default_value = "200")]
+    #[arg(long, default_value = "200")]
     timeout: u64,
 }
 
@@ -149,7 +147,6 @@ struct SeedAndIterations {
 async fn main() -> color_eyre::Result<()> {
     console_subscriber::init();
     color_eyre::install()?;
-    dotenvy::dotenv().ok();
     let cli = Cli::parse();
     let packet_queue = Arc::new(RwLock::new(
         PacketQueue::read_from_file("./packet_pool.toml").await?,
@@ -157,7 +154,7 @@ async fn main() -> color_eyre::Result<()> {
     match &cli.subcommand {
         SubCommands::Fuzz { threads } => {
             // The channel used for iteration counting
-            let (it_sender, mut it_receiver) = mpsc_channel::<u64>(*threads as usize);
+            let (it_sender, it_receiver) = mpsc_channel::<u64>(*threads as usize);
             // This receiver is necessary to dump the packets once the broker is stopped
             let (sender, _) = tokio::sync::broadcast::channel(1);
             let mut subscribers = vec![];

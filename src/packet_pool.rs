@@ -43,8 +43,6 @@ const OTHER_MOSQUITTO_CVE: &[&[u8]; MAX_PACKETS] = &[
 ];
 mod tests {
     use super::*;
-    use crate::{PacketQueue, Packets};
-    use std::fs::write;
 
     #[test]
     fn nanomq_bug() {

@@ -2,9 +2,10 @@ use crate::markov::ByteStream;
 use crate::{PacketQueue, Packets};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
+use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tracing::{debug, info, trace};
 // TODO: Maybe we can begin the packet queue with some more interesting packets that triggered bugs in the past from CVEs
 pub(crate) fn generate_auth_packet() -> Vec<u8> {
@@ -120,7 +121,7 @@ async fn known_packet(
     packet_queue: &Arc<RwLock<PacketQueue>>,
 ) -> bool {
     // TODO: decode the packet and extract user id, payload, topic etc. because those don't matter to see if it is a known packet
-    let mut queue_lock = packet_queue.read().await;
+    let queue_lock = packet_queue.read().await;
     let response_packet = response_packet.to_vec();
     if !queue_lock.inner.contains_key(&response_packet) {
         info!("New behavior discovered, adding it to the queue",);

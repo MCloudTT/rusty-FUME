@@ -7,23 +7,33 @@ readme = "README.md"
 edition = "2021"
 
 [dependencies]
+# Convenient error handling
 color-eyre = "0.6.2"
+# Logging
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
-dotenvy = "0.15.7"
+# Futures
 tokio = { version = "1.32.0", features = ["full"] }
-markov = "1.1.0"
-rand = "0.8.5"
+futures = "0.3.28"
+# Hex en/decoding
 hex = "0.4.3"
+# MQTT Packet generation
 mqtt-protocol = "0.11.2"
+# Random number generation with xoshiro for faster PRNG
+rand = "0.8.5"
 rand_xoshiro = "0.6.0"
+# Command line interface
 clap = { version = "4.3.24", features = ["derive"] }
+# For serialization
 serde = { version = "1.0.186", features = ["derive"] }
 toml = "0.7.6"
-futures = "0.3.28"
-tokio-uring = "0.4.0"
-console-subscriber = "0.1.10"
+# For serialization of raw bytes
 serde_with = {version="3.1.0", features = ["hex"]}
+
+# Tokio Console Support
+console-subscriber = "0.1.10"
+# For Websocket support
+tokio-tungstenite = "0.20.0"
 
 [profile.release]
 debug = true
