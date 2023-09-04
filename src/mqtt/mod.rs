@@ -43,7 +43,7 @@ pub(crate) async fn test_connection(stream: &mut impl ByteStream) -> color_eyre:
         .await?;
     let mut buf = [0; 1024];
     let _ = timeout(Duration::from_secs(1), stream.read(&mut buf)).await;
-    debug!("Received Packet hex encoded: {:?}", hex::encode(&buf));
+    debug!("Received Packet hex encoded: {:?}", hex::encode(buf));
     Ok(())
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

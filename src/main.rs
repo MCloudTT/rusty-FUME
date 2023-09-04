@@ -43,7 +43,6 @@ mod packets;
 mod process_monitor;
 mod runtime;
 // TODO: Clean up main
-// TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
 // TODO: Try fuzzing a basic mongoose server?
 // TODO: Fuzz mosquitto compiled with sanitizers
 // TODO: Support TLS, WS and QUIC
@@ -196,6 +195,7 @@ async fn main() -> color_eyre::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::packets::Packets;
     #[test]
     fn test_serialize_packet_queue() {
         let mut packet_queue = PacketQueue::default();

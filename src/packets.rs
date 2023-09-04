@@ -29,11 +29,11 @@ impl Display for Packets {
     }
 }
 impl Packets {
-    pub fn append(&mut self, packet: &mut Vec<u8>) {
+    pub fn append(&mut self, packet: &[u8]) {
         // Search the first free slot and insert it there
         let size = self.size();
         if size < MAX_PACKETS {
-            self.inner[size] = packet.clone();
+            self.inner[size] = packet.to_vec();
         }
     }
     pub fn is_full(&self) -> bool {
