@@ -1,4 +1,4 @@
-use crate::Packets;
+use crate::packets::Packets;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::Rng;

@@ -22,7 +22,7 @@ pub async fn start_supervised_process(
         .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("failed to execute process");
-    assert!(child.id().is_some());
+    debug_assert!(child.id().is_some());
     debug!("Started broker process");
     // No broker should take longer than 2 seconds to start. But we could make this configurable.
     sleep(tokio::time::Duration::from_secs(5)).await;

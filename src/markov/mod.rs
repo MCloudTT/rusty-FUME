@@ -23,7 +23,7 @@ use crate::mqtt::{
     generate_publish_packet, generate_subscribe_packet, generate_unsubscribe_packet, send_packets,
     SendError,
 };
-use crate::{PacketQueue, Packets};
+use crate::packets::{PacketQueue, Packets};
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::Rng;
@@ -75,9 +75,9 @@ impl Distribution<Mutations> for Standard {
     }
 }
 
-pub trait ByteStream: AsyncReadExt + AsyncWriteExt + Unpin {}
+pub trait ByteStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug + Send {}
 
-impl<T> ByteStream for T where T: AsyncReadExt + AsyncWriteExt + Unpin {}
+impl<T> ByteStream for T where T: AsyncReadExt + AsyncWriteExt + Unpin + Debug + Send {}
 pub struct StateMachine<B>
 where
     B: ByteStream,

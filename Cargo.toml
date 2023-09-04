@@ -1,6 +1,6 @@
 [package]
 name = "rusty-fume"
-version = "0.1.0"
+version = "0.8.0"
 authors = ["Nereuxofficial <37740907+Nereuxofficial@users.noreply.github.com>"]
 license = "GPLv3"
 readme = "README.md"
@@ -34,7 +34,18 @@ serde_with = {version="3.1.0", features = ["hex"]}
 console-subscriber = "0.1.10"
 # For Websocket support
 tokio-tungstenite = "0.20.0"
+# For TLS support
+tokio-rustls = { version="0.24.1", features = ["dangerous_configuration"], optional = true }
+rustls = { version="0.21.6", features = ["dangerous_configuration"], optional = true }
 
 [profile.release]
 debug = true
 codegen-units = 1
+
+[features]
+default = ["tcp"]
+tcp = []
+# TODO: Add quic, ws support
+quic = []
+websocket = []
+tls = ["dep:tokio-rustls", "dep:rustls"]

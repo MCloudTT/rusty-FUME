@@ -1,10 +1,11 @@
-use crate::markov::{ByteStream, StateMachine};
-use crate::{PacketQueue, SeedAndIterations};
+use crate::markov::StateMachine;
+use crate::network::connect_to_broker;
+use crate::packets::PacketQueue;
+use crate::SeedAndIterations;
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Receiver as MpscReceiver;
 use tokio::sync::mpsc::Sender;
@@ -18,7 +19,7 @@ use tracing::*;
 pub(crate) async fn run_thread(
     seed: u64,
     receiver_clone: Receiver<()>,
-    address: impl ToSocketAddrs + Clone + Send + Sync + 'static,
+    address: String,
     iterations: u64,
     packet_queue: Arc<RwLock<PacketQueue>>,
     it_sender_clone: Sender<u64>,
@@ -28,12 +29,12 @@ pub(crate) async fn run_thread(
         let mut counter: u64 = 0;
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
         while counter < iterations {
-            let new_tcpstream = TcpStream::connect(address.clone()).await;
-            if new_tcpstream.is_err() {
+            let new_stream = connect_to_broker(&address.clone()).await;
+            if new_stream.is_err() {
                 // Workaround for connections not being closed fast enough. See https://stackoverflow.com/questions/76238841/cant-assign-requested-address-in-request
                 error!(
                     "Error connecting to broker: {:?}. See recommendations",
-                    new_tcpstream
+                    new_stream
                 );
                 if !receiver_clone.is_empty() {
                     break;
@@ -42,7 +43,7 @@ pub(crate) async fn run_thread(
                 sleep(Duration::from_millis(100)).await;
                 continue;
             }
-            let new_tcpstream = new_tcpstream.unwrap();
+            let new_tcpstream = new_stream.unwrap();
             let mut state_machine = StateMachine::new(new_tcpstream);
             let mode = rng.gen();
             state_machine.execute(mode, &mut rng, &packet_queue).await;

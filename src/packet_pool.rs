@@ -1,7 +1,7 @@
 //! Here are packets from previously discovered CVEs
 
 use crate::MAX_PACKETS;
-
+/*
 /// https://www.cvedetails.com/cve/CVE-2021-34432/
 const CVE_2021_34432: &[&[u8]; MAX_PACKETS] = &[
     &[
@@ -41,6 +41,7 @@ const OTHER_MOSQUITTO_CVE: &[&[u8]; MAX_PACKETS] = &[
     &[],
     &[],
 ];
+*/
 mod tests {
     use super::*;
 

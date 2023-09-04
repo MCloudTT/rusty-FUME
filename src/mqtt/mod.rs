@@ -1,16 +1,11 @@
 use crate::markov::ByteStream;
-use crate::{PacketQueue, Packets};
+use crate::packets::{PacketQueue, Packets};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tracing::{debug, info, trace};
-// TODO: Maybe we can begin the packet queue with some more interesting packets that triggered bugs in the past from CVEs
-pub(crate) fn generate_auth_packet() -> Vec<u8> {
-    unimplemented!("Auth packet not implemented yet. Switch to MQTT V5")
-}
+
 pub(crate) fn generate_connect_packet() -> [u8; 62] {
     [
         16, 60, 0, 4, 77, 81, 84, 84, 4, 4, 0, 0, 0, 17, 72, 101, 108, 108, 111, 32, 77, 81, 84,
