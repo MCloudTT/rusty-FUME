@@ -25,63 +25,64 @@ pub(crate) async fn run_thread(
     it_sender_clone: Sender<u64>,
 ) {
     let task_handle = task::spawn(async move {
-        let mut last_packets = Vec::new();
-        let mut counter: u64 = 0;
-        let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
-        while counter < iterations {
-            let new_stream = connect_to_broker(&address.clone()).await;
-            if new_stream.is_err() {
-                // Workaround for connections not being closed fast enough. See https://stackoverflow.com/questions/76238841/cant-assign-requested-address-in-request
-                error!(
+        info_span!("Thread {}", seed).in_scope(|| async {
+            let mut last_packets = Vec::new();
+            let mut counter: u64 = 0;
+            let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+            while counter < iterations {
+                let new_stream = connect_to_broker(&address.clone()).await;
+                if new_stream.is_err() {
+                    // Workaround for connections not being closed fast enough. See https://stackoverflow.com/questions/76238841/cant-assign-requested-address-in-request
+                    error!(
                     "Error connecting to broker: {:?}. See recommendations",
                     new_stream
                 );
+                    if !receiver_clone.is_empty() {
+                        break;
+                    }
+                    // So we'll just have a "back-off" sleep here
+                    sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
+                let new_tcpstream = new_stream.unwrap();
+                let mut state_machine = StateMachine::new(new_tcpstream);
+                let mode = rng.gen();
+                state_machine.execute(mode, &mut rng, &packet_queue).await;
+                last_packets = state_machine.previous_packets.clone();
+                // We receive a message once the broker is stopped
                 if !receiver_clone.is_empty() {
                     break;
                 }
-                // So we'll just have a "back-off" sleep here
-                sleep(Duration::from_millis(100)).await;
-                continue;
+                counter += 1;
+                if counter % 5000 == 0 {
+                    // Display iterations per second
+                    let _ = it_sender_clone.send(counter).await;
+                }
             }
-            let new_tcpstream = new_stream.unwrap();
-            let mut state_machine = StateMachine::new(new_tcpstream);
-            let mode = rng.gen();
-            state_machine.execute(mode, &mut rng, &packet_queue).await;
-            last_packets = state_machine.previous_packets.clone();
-            // We receive a message once the broker is stopped
-            // TODO: Also save last packets upon crash
-            if !receiver_clone.is_empty() {
-                break;
-            }
-            counter += 1;
-            if counter % 5000 == 0 {
-                // Display iterations per second
-                let _ = it_sender_clone.send(counter).await;
-            }
-        }
-        if iterations == u64::MAX {
-            // If the fuzzing is stopped we dump the packets
-            let serialized = toml::to_string(&SeedAndIterations {
-                seed: seed.to_string(),
-                iterations: counter.to_string(),
-            })
-            .unwrap();
-            let res = fs::write(format!("threads/fuzzing_{}.txt", seed), serialized).await;
+            if iterations == u64::MAX {
+                // If the fuzzing is stopped we dump the packets
+                let serialized = toml::to_string(&SeedAndIterations {
+                    seed: seed.to_string(),
+                    iterations: counter.to_string(),
+                })
+                    .unwrap();
+                let res = fs::write(format!("threads/fuzzing_{}.txt", seed), serialized).await;
 
-            // TODO: Handle some errors
-            if res.is_err() {
-                error!("Error dumping packets: {:?}", res);
+                // TODO: Handle some errors
+                if res.is_err() {
+                    error!("Error dumping packets: {:?}", res);
+                }
             }
-        }
-        // Dump the packet we crashed on
-        let _ = fs::create_dir("crashes").await;
-        let _ = fs::write(
-            format!("crashes/crash_{}.txt", seed),
-            format!("{:?}", last_packets),
-        )
-        .await;
+            // Dump the packet we crashed on
+            let _ = fs::create_dir("crashes").await;
+            let _ = fs::write(
+                format!("crashes/crash_{}.txt", seed),
+                format!("{:?}", last_packets),
+            )
+                .await;
 
-        info!("Thread {seed} finished at {counter} iterations, when {iterations} were the target!");
+            info!("Thread {seed} finished at {counter} iterations, when {iterations} were the target!");
+        }).await;
     });
     let _ = task_handle.await;
 }

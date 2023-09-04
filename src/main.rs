@@ -26,14 +26,25 @@ use crate::process_monitor::start_supervised_process;
 use crate::runtime::{iterations_tracker, run_thread};
 use clap::{Parser, Subcommand};
 use futures::future::join_all;
+
+#[cfg(feature = "stats")]
+use opentelemetry::runtime::Tokio;
+#[cfg(feature = "stats")]
+use opentelemetry::trace::Tracer;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "stats")]
+use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::mpsc::channel as mpsc_channel;
 use tokio::sync::RwLock;
 use tokio::{fs, task};
-use tracing::{debug, info, trace};
+use tracing::{debug, info, instrument, span, trace};
+#[cfg(feature = "stats")]
+use tracing_subscriber::layer::SubscriberExt;
+#[cfg(feature = "stats")]
+use tracing_subscriber::util::SubscriberInitExt;
 
 mod markov;
 pub mod mqtt;
@@ -82,8 +93,37 @@ struct SeedAndIterations {
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
-    console_subscriber::init();
     color_eyre::install()?;
+    #[cfg(not(feature = "stats"))]
+    {
+        let subscriber = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .finish();
+        tracing::subscriber::set_global_default(subscriber)?;
+    }
+    #[cfg(feature = "stats")]
+    let tracer = opentelemetry_jaeger::new_collector_pipeline()
+        .with_endpoint(env::var("OPENTELEMETRY_JAEGER_ENDPOINT").unwrap())
+        .with_service_name("rusty-fume")
+        .with_reqwest()
+        .install_batch(Tokio)?;
+    #[cfg(feature = "stats")]
+    let opentelemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+    #[cfg(feature = "stats")]
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .with(opentelemetry)
+        .init();
+    start_app().await?;
+    #[cfg(feature = "stats")]
+    {
+        opentelemetry::global::shutdown_tracer_provider();
+    }
+    Ok(())
+}
+
+#[instrument]
+async fn start_app() -> color_eyre::Result<()> {
     let cli = Cli::parse();
     let packet_queue = Arc::new(RwLock::new(
         PacketQueue::read_from_file("./packet_pool.toml").await?,

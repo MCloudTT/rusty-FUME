@@ -1,10 +1,11 @@
 use crate::markov::ByteStream;
 use crate::packets::{PacketQueue, Packets};
+use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
-use tracing::{debug, info, trace};
+use tracing::{debug, info, instrument, trace};
 
 pub(crate) fn generate_connect_packet() -> [u8; 62] {
     [
@@ -55,7 +56,16 @@ pub(crate) enum SendError {
     // We couldn't send the packet. A previous packet might have crashed the server
     SendErr,
 }
-
+impl Display for SendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SendError::Timeout => write!(f, "Timeout"),
+            SendError::ReceiveErr => write!(f, "Rcv error"),
+            SendError::SendErr => write!(f, "Send error"),
+        }
+    }
+}
+#[instrument(err)]
 pub(crate) async fn send_packets(
     stream: &mut impl ByteStream,
     packets: &Packets,
@@ -110,6 +120,7 @@ pub(crate) async fn send_packet(
 }
 
 /// This works by using the response packet as the key in a hashmap. If the packet is already in the hashmap we know that we have seen it before
+#[instrument]
 async fn known_packet(
     response_packet: &[u8],
     input_packet: &Packets,

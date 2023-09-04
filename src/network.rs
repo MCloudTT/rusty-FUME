@@ -24,7 +24,9 @@ pub use tcp::*;
 mod tcp {
     use super::*;
     use tokio::net::{TcpStream, ToSocketAddrs};
+    use tracing::instrument;
 
+    #[instrument(err, skip(address))]
     pub async fn connect_to_broker(address: impl ToSocketAddrs) -> Result<TcpStream> {
         let tcpstream = TcpStream::connect(address).await?;
         Ok(tcpstream)
