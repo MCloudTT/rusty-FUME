@@ -39,7 +39,7 @@ const SEL_FROM_QUEUE: f32 = 0.7;
 const PACKET_APPEND_CHANCE: f32 = 0.2;
 const SEND_CHANCE: f32 = 0.2;
 const BOF_CHANCE: f32 = 0.2;
-const MUT_AFTER_SEND: f32 = 0.3;
+const MUT_AFTER_SEND: f32 = 0.7;
 pub const MAX_PACKETS: usize = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -78,8 +78,6 @@ impl Distribution<Mutations> for Standard {
 pub trait ByteStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug + Send {}
 
 impl<T> ByteStream for T where T: AsyncReadExt + AsyncWriteExt + Unpin + Debug + Send {}
-
-#[derive(Debug)]
 pub struct StateMachine<B>
 where
     B: ByteStream,
@@ -108,7 +106,6 @@ impl Distribution<Mode> for Standard {
         }
     }
 }
-
 impl<B> StateMachine<B>
 where
     B: ByteStream,
@@ -121,8 +118,6 @@ where
             previous_packets: Vec::new(),
         }
     }
-
-    #[instrument]
     pub(crate) async fn execute(
         &mut self,
         mode: Mode,
@@ -234,7 +229,7 @@ where
                 } else {
                     trace!("Sent packet successfully");
                 }
-                if (rng.gen_range(0f32..1f32) > MUT_AFTER_SEND) || res.is_err() {
+                if rng.gen_range(0f32..1f32) > MUT_AFTER_SEND || res.is_err() {
                     self.state = State::Sf;
                 } else {
                     self.state = State::Mutate(rng.gen());
