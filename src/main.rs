@@ -95,12 +95,11 @@ struct SeedAndIterations {
 async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     #[cfg(not(feature = "stats"))]
-    {
-        let subscriber = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)?;
-    }
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .finish();
+    #[cfg(not(feature = "stats"))]
+    tracing::subscriber::set_global_default(subscriber)?;
     #[cfg(feature = "stats")]
     let tracer = opentelemetry_jaeger::new_collector_pipeline()
         .with_endpoint(env::var("OPENTELEMETRY_JAEGER_ENDPOINT").unwrap())
