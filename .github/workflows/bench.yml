@@ -35,14 +35,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           # Additional non workspace directories, separated by newlines
-          key: benches-${{ runner.os }}-unit_fluvio_protocol-rust
+          key: benches-${{ runner.os }}-unit_markov_model-rust
 
       - name: Cache Benchmark data
         uses: actions/cache@v3
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/main'
         with:
           path: ./benches_cache
-          key: benches-${{ runner.os }}-unit_fluvio_protocol
+          key: benches-${{ runner.os }}-unit_markov_model-rust
 
       - name: Run Benchmarks
         run: cd lib; cargo bench -- --output-format bencher | tee markov_model_bench.txt
