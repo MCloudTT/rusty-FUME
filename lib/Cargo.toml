@@ -3,6 +3,8 @@ name = "lib"
 version = "0.8.0"
 edition = "2021"
 
+[lib]
+bench=false
 
 [dependencies]
 # Convenient error handling
