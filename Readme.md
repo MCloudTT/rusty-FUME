@@ -9,6 +9,16 @@ A high-performance MQTT network Fuzzer.
 
 This is an implementation of [FUME-Fuzzing-MQTT-Brokers](https://github.com/PBearson/FUME-Fuzzing-MQTT-Brokers/) in Rust.
 
+# Architecture
+The Fuzzing process is based on a Markov Model seen in the following image:
+![Markov Model](images/MarkovModel.png)
+For more details see src/lib/lib.rs or the original paper.
+
+Notable changes from the paper include:
+- The use of multiple asynchronous threads for fuzzing by default
+- Improved performance
+- Only counting broker crashes as crashes(The original paper also counted refused connections as crashes)
+
 # Running the project
 After [installing Rust](https://rustup.rs), run the following command in the project directory:
 ```
@@ -35,7 +45,7 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 ## Compatibility
 Currently, the Windows build is failing in the ci, however i've only tested this on Linux so far. Maybe it works on Windows, maybe it doesn't. I don't know. Pull Requests to fix this if necessary are welcome.
 
-## Trophies
+## 🏆 Trophies
 All bugs found with this software. If you find a bug using rusty-FUME, please open an issue and I'll add it to the list once it is patched.
 - [FlashMQ Null pointer dereference](https://github.com/halfgaar/FlashMQ/commit/eb3acf88771af3eeddf086e4c9dc51d703456eee)
 

@@ -54,7 +54,7 @@ jobs:
           # What benchmark tool the output.txt came from
           tool: 'cargo'
           # Where the output from the benchmark tool is stored
-          output-file-path: markov_model_bench.txt
+          output-file-path: lib/markov_model_bench.txt
           # GitHub API token to make a commit comment
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # Leave a job summary with benchmark result comparison
