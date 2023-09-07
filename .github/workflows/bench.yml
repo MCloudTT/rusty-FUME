@@ -45,7 +45,7 @@ jobs:
           key: benches-${{ runner.os }}-unit_fluvio_protocol
 
       - name: Run Benchmarks
-        run: cargo bench -- --output-format bencher | tee markov_model_bench.txt
+        run: cd lib; cargo bench -- --output-format bencher | tee markov_model_bench.txt
 
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
