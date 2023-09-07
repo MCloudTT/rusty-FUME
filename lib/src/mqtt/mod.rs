@@ -1,15 +1,11 @@
 use crate::markov::ByteStream;
-use crate::{PacketQueue, Packets};
+use crate::packets::{PacketQueue, Packets};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
 use tracing::{debug, info, trace};
-// TODO: Maybe we can begin the packet queue with some more interesting packets that triggered bugs in the past from CVEs
-pub(crate) fn generate_auth_packet() -> Vec<u8> {
-    unimplemented!("Auth packet not implemented yet. Switch to MQTT V5")
-}
+
 pub(crate) fn generate_connect_packet() -> [u8; 62] {
     [
         16, 60, 0, 4, 77, 81, 84, 84, 4, 4, 0, 0, 0, 17, 72, 101, 108, 108, 111, 32, 77, 81, 84,
@@ -41,13 +37,13 @@ pub(crate) fn generate_pingreq_packet() -> [u8; 2] {
     [192, 0]
 }
 
-pub(crate) async fn test_connection(stream: &mut impl ByteStream) -> color_eyre::Result<()> {
+pub async fn test_connection(stream: &mut impl ByteStream) -> color_eyre::Result<()> {
     stream
         .write_all(generate_connect_packet().as_slice())
         .await?;
     let mut buf = [0; 1024];
     let _ = timeout(Duration::from_secs(1), stream.read(&mut buf)).await;
-    debug!("Received Packet hex encoded: {:?}", hex::encode(&buf));
+    debug!("Received Packet hex encoded: {:?}", hex::encode(buf));
     Ok(())
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -64,23 +60,23 @@ pub(crate) async fn send_packets(
     stream: &mut impl ByteStream,
     packets: &Packets,
     packet_queue: &Arc<RwLock<PacketQueue>>,
+    timeout: u16,
 ) -> Result<(), SendError> {
     for packet in packets.inner.iter().filter(|p| !p.is_empty()) {
-        send_packet(stream, packet.as_slice(), packets, packet_queue).await?;
+        send_packet(stream, packet.as_slice(), packets, packet_queue, timeout).await?;
     }
     Ok(())
 }
-
-const PACKET_TIMEOUT: u64 = 30;
 
 pub(crate) async fn send_packet(
     stream: &mut impl ByteStream,
     packet: &[u8],
     packets: &Packets,
     packet_queue: &Arc<RwLock<PacketQueue>>,
+    timeout_ms: u16,
 ) -> Result<(), SendError> {
     let write_result = timeout(
-        Duration::from_millis(PACKET_TIMEOUT),
+        Duration::from_millis(timeout_ms as u64),
         stream.write_all(packet),
     )
     .await;
@@ -95,7 +91,11 @@ pub(crate) async fn send_packet(
         }
     }
     let mut buf = [0; 1024];
-    let res = timeout(Duration::from_millis(PACKET_TIMEOUT), stream.read(&mut buf)).await;
+    let res = timeout(
+        Duration::from_millis(timeout_ms as u64),
+        stream.read(&mut buf),
+    )
+    .await;
     match res {
         Ok(Ok(p)) => {
             known_packet(&buf[..p], packets, packet_queue).await;
@@ -120,7 +120,7 @@ async fn known_packet(
     packet_queue: &Arc<RwLock<PacketQueue>>,
 ) -> bool {
     // TODO: decode the packet and extract user id, payload, topic etc. because those don't matter to see if it is a known packet
-    let mut queue_lock = packet_queue.read().await;
+    let queue_lock = packet_queue.read().await;
     let response_packet = response_packet.to_vec();
     if !queue_lock.inner.contains_key(&response_packet) {
         info!("New behavior discovered, adding it to the queue",);

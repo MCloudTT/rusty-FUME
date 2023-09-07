@@ -1,4 +1,4 @@
-use crate::Packets;
+use crate::packets::Packets;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::Rng;
@@ -36,7 +36,7 @@ impl Distribution<InjectType> for Standard {
 fn inject_bof(packet: &mut Vec<u8>, rng: &mut Xoshiro256PlusPlus) {
     let idx = rng.gen_range(0..packet.len());
     // To fight big packets
-    let byte_length = 10000 / packet.len();
+    let byte_length = 350 / packet.len();
     let mut bytes = vec![0; byte_length];
     rng.fill(&mut bytes[..]);
     packet.splice(idx..idx, bytes);

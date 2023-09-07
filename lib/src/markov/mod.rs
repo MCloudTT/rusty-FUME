@@ -23,13 +23,13 @@ use crate::mqtt::{
     generate_publish_packet, generate_subscribe_packet, generate_unsubscribe_packet, send_packets,
     SendError,
 };
-use crate::{PacketQueue, Packets};
+use crate::packets::{PacketQueue, Packets};
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::Rng;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::default::Default;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::RwLock;
@@ -75,9 +75,9 @@ impl Distribution<Mutations> for Standard {
     }
 }
 
-pub trait ByteStream: AsyncReadExt + AsyncWriteExt + Unpin {}
+pub trait ByteStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug + Send {}
 
-impl<T> ByteStream for T where T: AsyncReadExt + AsyncWriteExt + Unpin {}
+impl<T> ByteStream for T where T: AsyncReadExt + AsyncWriteExt + Unpin + Debug + Send {}
 pub struct StateMachine<B>
 where
     B: ByteStream,
@@ -90,11 +90,21 @@ where
     pub previous_packets: Vec<Packets>,
     // The current stream, TlsStream TcpStream or WebsocketStream
     stream: B,
+    timeout: u16,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Mode {
     MutationGuided,
     GenerationGuided,
+}
+
+impl Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MutationGuided => write!(f, "Mutation Guided"),
+            GenerationGuided => write!(f, "Generation Guided"),
+        }
+    }
 }
 
 impl Distribution<Mode> for Standard {
@@ -110,15 +120,16 @@ impl<B> StateMachine<B>
 where
     B: ByteStream,
 {
-    pub(crate) fn new(stream: B) -> Self {
+    pub fn new(stream: B, timeout: u16) -> Self {
         Self {
             stream,
             state: Default::default(),
             packets: Packets::new(),
             previous_packets: Vec::new(),
+            timeout,
         }
     }
-    pub(crate) async fn execute(
+    pub async fn execute(
         &mut self,
         mode: Mode,
         rng: &mut Xoshiro256PlusPlus,
@@ -164,25 +175,22 @@ where
             State::ADD(packet_type) => {
                 match packet_type {
                     PacketType::CONNECT => {
-                        self.packets.append(&mut generate_connect_packet().to_vec());
+                        self.packets.append(&generate_connect_packet());
                     }
                     PacketType::PUBLISH => {
-                        self.packets.append(&mut generate_publish_packet().to_vec());
+                        self.packets.append(&generate_publish_packet());
                     }
                     PacketType::SUBSCRIBE => {
-                        self.packets
-                            .append(&mut generate_subscribe_packet().to_vec());
+                        self.packets.append(&generate_subscribe_packet());
                     }
                     PacketType::UNSUBSCRIBE => {
-                        self.packets
-                            .append(&mut generate_unsubscribe_packet().to_vec());
+                        self.packets.append(&generate_unsubscribe_packet());
                     }
                     PacketType::PINGREQ => {
-                        self.packets.append(&mut generate_pingreq_packet().to_vec());
+                        self.packets.append(&generate_pingreq_packet());
                     }
                     PacketType::DISCONNECT => {
-                        self.packets
-                            .append(&mut generate_disconnect_packet().to_vec());
+                        self.packets.append(&generate_disconnect_packet());
                     }
                     _ => unreachable!(),
                 }
@@ -218,7 +226,8 @@ where
             }
             State::SEND => {
                 self.previous_packets.push(self.packets.clone());
-                let res = send_packets(&mut self.stream, &self.packets, packet_queue).await;
+                let res =
+                    send_packets(&mut self.stream, &self.packets, packet_queue, self.timeout).await;
                 if let Err(e) = res {
                     match e {
                         SendError::Timeout => {}

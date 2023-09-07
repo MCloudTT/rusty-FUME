@@ -4,5 +4,3 @@ Cargo.lock
 .vscode
 *.log
 .env
-crashes
-threads

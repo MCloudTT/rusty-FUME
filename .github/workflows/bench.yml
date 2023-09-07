@@ -1,0 +1,64 @@
+name: Benchmarks
+## Adapted from this: https://github.com/infinyon/fluvio/blob/master/.github/workflows/benchmarks.yml
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+  push:
+    branches:
+      - main
+      - dev
+
+permissions:
+  contents: write
+
+jobs:
+  markov_model:
+    name: Markov Model Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Get Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: nightly
+          profile: minimal
+
+      - name: Cache Rust Cargo files
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Additional non workspace directories, separated by newlines
+          key: benches-${{ runner.os }}-unit_markov_model-rust
+
+      - name: Cache Benchmark data
+        uses: actions/cache@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: ./benches_cache
+          key: benches-${{ runner.os }}-unit_markov_model-rust
+
+      - name: Run Benchmarks
+        run: cd lib; cargo bench -- --output-format bencher | tee markov_model_bench.txt
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        if: github.ref == 'refs/heads/main'
+        with:
+          # What benchmark tool the output.txt came from
+          tool: 'cargo'
+          # Where the output from the benchmark tool is stored
+          output-file-path: markov_model_bench.txt
+          # GitHub API token to make a commit comment
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Leave a job summary with benchmark result comparison
+          summary-always: true
+          # Where the previous data file is stored
+          external-data-json-path: ./benches_cache/benchmark-data.json
+          alert-comment-cc-users: '@Nereuxofficial'

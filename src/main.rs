@@ -1,116 +1,18 @@
-//! # rusty-FUME
-//! rusty-FUME is a fuzzer for the MQTT protocol. It is based on [FUME-Fuzzing-MQTT Brokers](https://github.com/PBearson/FUME-Fuzzing-MQTT-Brokers)
-//! and uses markov chains to generate new packet chains. If it discovers a new response behaviour the chain is added to the fuzzing queue.
-//! We use [tokio](https://tokio.rs/) for async networking.
-//! ## The state machine
-//! We implement a State machine with a markov chain. All probabilities are configurable for this process(except the ones with only one option).
-//! The state machine is defined as follows for the Mutation Guided Fuzzing:
-//! - S0: Initial State: Either goto CONNECT state or select a packet from the queue and go to MUTATION state
-//! - CONNECT: Add connect to the current chain and go to ADDING State
-//! - ADDING: Either add a new packet(configurable probability for each one) to the chain or go to MUTATION state
-//! - MUTATION: Mutate, delete, inject or SEND the current chain
-//! - SEND: Send the current chain and either go to Sf or MUTATION state
-//! - Sf: Final State
-//! And this way for Generation Guided Fuzzing:
-//! - S0: Initial State: Goto ADD(CONNECT) state
-//! - CONNECT: Add connect to the current chain and go to S1
-//! - S1: Either add a new packet or go to S2
-//! - S2: Inject/Delete/Mutate the current chain or go to SEND
-//! - SEND: Send the current chain and either go to Sf or S2
-//! Once they get to S2 they behave the same way.
-use std::cmp::min;
-use std::collections::BTreeMap;
-use std::fmt::Display;
-use std::path::Path;
-use std::sync::Arc;
-// TODO: Pick a mqtt packet generation/decoding library that is customizable for the purpose of this project and also supports v3,v4 and v5.
-// FIXME: Fix ranges...
-// TODO: crtl_c handling
-// TODO: Try fuzzing a basic mongoose server?
-// TODO: Fuzz mosquitto compiled with sanitizers
-use crate::markov::MAX_PACKETS;
-use crate::mqtt::test_connection;
-use crate::process_monitor::start_supervised_process;
-use crate::runtime::{iterations_tracker, run_thread};
 use clap::{Parser, Subcommand};
 use futures::future::join_all;
+use lib::mqtt::test_connection;
+use lib::network::connect_to_broker;
+use lib::packets::PacketQueue;
+use lib::process_monitor::start_supervised_process;
+use lib::runtime::{iterations_tracker, run_thread};
+use lib::SeedAndIterations;
 use rand::{thread_rng, Rng};
-use serde::{Deserialize, Serialize};
-use serde_with::formats::CommaSeparator;
-use serde_with::serde_as;
-use serde_with::StringWithSeparator;
 use std::str::FromStr;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
-use tokio::net::TcpStream;
+use std::sync::Arc;
 use tokio::sync::mpsc::channel as mpsc_channel;
 use tokio::sync::RwLock;
-use tokio::time::sleep;
 use tokio::{fs, task};
 use tracing::{debug, info, trace};
-
-mod markov;
-pub mod mqtt;
-mod packet_pool;
-mod process_monitor;
-mod runtime;
-
-// TODO: All threads should also dump their last packets for fast replaying
-#[serde_as]
-#[derive(Debug, PartialEq, Eq, Clone, Hash, Default, Serialize, Deserialize)]
-pub struct Packets {
-    #[serde_as(as = "[StringWithSeparator::<CommaSeparator, u8>; MAX_PACKETS]")]
-    inner: [Vec<u8>; MAX_PACKETS],
-}
-impl Display for Packets {
-    // Hex dump the packets
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut s = String::new();
-        for i in 0..MAX_PACKETS {
-            if !self.inner[i].is_empty() {
-                s.push_str(hex::encode(&self.inner[i]).as_str());
-                s.push('\n');
-            }
-        }
-        write!(f, "{}", s)
-    }
-}
-impl Packets {
-    pub fn append(&mut self, packet: &mut Vec<u8>) {
-        // Search the first free slot and insert it there
-        let size = self.size();
-        if size < MAX_PACKETS {
-            self.inner[size] = packet.clone();
-        }
-    }
-    pub fn is_full(&self) -> bool {
-        self.inner.iter().all(|x| !x.is_empty())
-    }
-    pub fn size(&self) -> usize {
-        min(1, self.inner.iter().filter(|x| !x.is_empty()).count())
-    }
-    pub fn new() -> Self {
-        Self {
-            inner: Default::default(),
-        }
-    }
-}
-
-#[serde_as]
-#[derive(Debug, PartialEq, Eq, Clone, Hash, Default, Serialize, Deserialize)]
-struct PacketQueue {
-    #[serde_as(as = "BTreeMap<StringWithSeparator::<CommaSeparator, u8>, _>")]
-    inner: BTreeMap<Vec<u8>, Packets>,
-}
-
-impl PacketQueue {
-    async fn read_from_file(path: impl AsRef<Path>) -> color_eyre::Result<Self> {
-        let mut content = String::new();
-        File::open(path).await?.read_to_string(&mut content).await?;
-        let queue = toml::from_str(&content)?;
-        Ok(queue)
-    }
-}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -122,8 +24,8 @@ struct Cli {
     #[arg(short, long)]
     broker_command: String,
     // TODO: Make the timeout configurable
-    #[arg(short, long, default_value = "200")]
-    timeout: u64,
+    #[arg(long, default_value = "200")]
+    timeout: u16,
 }
 
 #[derive(Subcommand, Debug)]
@@ -138,18 +40,10 @@ enum SubCommands {
         sequential: bool,
     },
 }
-/// Struct to serialize threads once they are done(aka the broker has crashed).
-#[derive(Serialize, Deserialize, Debug)]
-struct SeedAndIterations {
-    pub seed: String,
-    pub iterations: String,
-}
-
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     console_subscriber::init();
     color_eyre::install()?;
-    dotenvy::dotenv().ok();
     let cli = Cli::parse();
     let packet_queue = Arc::new(RwLock::new(
         PacketQueue::read_from_file("./packet_pool.toml").await?,
@@ -157,7 +51,7 @@ async fn main() -> color_eyre::Result<()> {
     match &cli.subcommand {
         SubCommands::Fuzz { threads } => {
             // The channel used for iteration counting
-            let (it_sender, mut it_receiver) = mpsc_channel::<u64>(*threads as usize);
+            let (it_sender, it_receiver) = mpsc_channel::<u64>(*threads as usize);
             // This receiver is necessary to dump the packets once the broker is stopped
             let (sender, _) = tokio::sync::broadcast::channel(1);
             let mut subscribers = vec![];
@@ -166,8 +60,8 @@ async fn main() -> color_eyre::Result<()> {
             }
             start_supervised_process(sender, cli.broker_command).await?;
             let address = cli.target.clone();
-            let mut tcpstream = TcpStream::connect(&address).await?;
-            test_connection(&mut tcpstream).await?;
+            let mut stream = connect_to_broker(&cli.target).await?;
+            test_connection(&mut stream).await?;
             info!("Connection established, starting fuzzing!");
             let mut rng = thread_rng();
             let _ = fs::create_dir("./threads").await;
@@ -183,6 +77,7 @@ async fn main() -> color_eyre::Result<()> {
                     u64::MAX,
                     packet_queue.clone(),
                     it_sender_clone,
+                    cli.timeout,
                 ));
             }
             // Track it/s
@@ -221,8 +116,8 @@ async fn main() -> color_eyre::Result<()> {
                 subscribers.push(sender.subscribe());
             }
             start_supervised_process(sender, cli.broker_command).await?;
-            let mut tcpstream = TcpStream::connect(&cli.target).await?;
-            test_connection(&mut tcpstream).await?;
+            let mut stream = connect_to_broker(&cli.target).await?;
+            test_connection(&mut stream).await?;
             debug!("Connection established");
             debug!("Starting replay with {} seeds", filtered_files.len());
             let mut threads = vec![];
@@ -238,6 +133,7 @@ async fn main() -> color_eyre::Result<()> {
                     u64::from_str(&seed_and_iterations.iterations).unwrap(),
                     packet_queue.clone(),
                     unused_it_channel.clone(),
+                    cli.timeout,
                 ));
             }
             if *sequential {
@@ -256,16 +152,4 @@ async fn main() -> color_eyre::Result<()> {
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn test_serialize_packet_queue() {
-        let mut packet_queue = PacketQueue::default();
-        packet_queue.inner.insert(vec![0x10], Packets::default());
-        let serialized = toml::to_string(&packet_queue).unwrap();
-        println!("{}", serialized);
-    }
 }
