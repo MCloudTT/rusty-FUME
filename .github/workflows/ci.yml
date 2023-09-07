@@ -9,7 +9,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-# TODO: Add benchmarking in CI(see https://github.com/benchmark-action/github-action-benchmark/pull/138)
+
 jobs:
   build:
     strategy:
