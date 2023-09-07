@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 
 async fn exec_markov_fast(m: Mode) {
     let stream = duplex(10 * 1024).0;
-    let mut machine = StateMachine::new(stream);
+    let mut machine = StateMachine::new(stream, 100);
     let mut rng = Xoshiro256PlusPlus::from_seed([5; 32]);
     machine
         .execute(m, &mut rng, &Arc::new(RwLock::new(PacketQueue::default())))

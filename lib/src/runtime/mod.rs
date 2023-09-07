@@ -22,6 +22,7 @@ pub async fn run_thread(
     iterations: u64,
     packet_queue: Arc<RwLock<PacketQueue>>,
     it_sender_clone: Sender<u64>,
+    timeout: u16,
 ) {
     let task_handle = task::spawn(async move {
         let mut last_packets = Vec::new();
@@ -43,12 +44,11 @@ pub async fn run_thread(
                 continue;
             }
             let new_tcpstream = new_stream.unwrap();
-            let mut state_machine = StateMachine::new(new_tcpstream);
+            let mut state_machine = StateMachine::new(new_tcpstream, timeout);
             let mode = rng.gen();
             state_machine.execute(mode, &mut rng, &packet_queue).await;
             last_packets = state_machine.previous_packets.clone();
             // We receive a message once the broker is stopped
-            // TODO: Also save last packets upon crash
             if !receiver_clone.is_empty() {
                 break;
             }

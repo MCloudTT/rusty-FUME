@@ -60,23 +60,23 @@ pub(crate) async fn send_packets(
     stream: &mut impl ByteStream,
     packets: &Packets,
     packet_queue: &Arc<RwLock<PacketQueue>>,
+    timeout: u16,
 ) -> Result<(), SendError> {
     for packet in packets.inner.iter().filter(|p| !p.is_empty()) {
-        send_packet(stream, packet.as_slice(), packets, packet_queue).await?;
+        send_packet(stream, packet.as_slice(), packets, packet_queue, timeout).await?;
     }
     Ok(())
 }
-
-const PACKET_TIMEOUT: u64 = 30;
 
 pub(crate) async fn send_packet(
     stream: &mut impl ByteStream,
     packet: &[u8],
     packets: &Packets,
     packet_queue: &Arc<RwLock<PacketQueue>>,
+    timeout_ms: u16,
 ) -> Result<(), SendError> {
     let write_result = timeout(
-        Duration::from_millis(PACKET_TIMEOUT),
+        Duration::from_millis(timeout_ms as u64),
         stream.write_all(packet),
     )
     .await;
@@ -91,7 +91,11 @@ pub(crate) async fn send_packet(
         }
     }
     let mut buf = [0; 1024];
-    let res = timeout(Duration::from_millis(PACKET_TIMEOUT), stream.read(&mut buf)).await;
+    let res = timeout(
+        Duration::from_millis(timeout_ms as u64),
+        stream.read(&mut buf),
+    )
+    .await;
     match res {
         Ok(Ok(p)) => {
             known_packet(&buf[..p], packets, packet_queue).await;

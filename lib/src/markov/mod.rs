@@ -90,6 +90,7 @@ where
     pub previous_packets: Vec<Packets>,
     // The current stream, TlsStream TcpStream or WebsocketStream
     stream: B,
+    timeout: u16,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Mode {
@@ -119,12 +120,13 @@ impl<B> StateMachine<B>
 where
     B: ByteStream,
 {
-    pub fn new(stream: B) -> Self {
+    pub fn new(stream: B, timeout: u16) -> Self {
         Self {
             stream,
             state: Default::default(),
             packets: Packets::new(),
             previous_packets: Vec::new(),
+            timeout,
         }
     }
     pub async fn execute(
@@ -224,7 +226,8 @@ where
             }
             State::SEND => {
                 self.previous_packets.push(self.packets.clone());
-                let res = send_packets(&mut self.stream, &self.packets, packet_queue).await;
+                let res =
+                    send_packets(&mut self.stream, &self.packets, packet_queue, self.timeout).await;
                 if let Err(e) = res {
                     match e {
                         SendError::Timeout => {}

@@ -25,7 +25,7 @@ struct Cli {
     broker_command: String,
     // TODO: Make the timeout configurable
     #[arg(long, default_value = "200")]
-    timeout: u64,
+    timeout: u16,
 }
 
 #[derive(Subcommand, Debug)]
@@ -77,6 +77,7 @@ async fn main() -> color_eyre::Result<()> {
                     u64::MAX,
                     packet_queue.clone(),
                     it_sender_clone,
+                    cli.timeout,
                 ));
             }
             // Track it/s
@@ -132,6 +133,7 @@ async fn main() -> color_eyre::Result<()> {
                     u64::from_str(&seed_and_iterations.iterations).unwrap(),
                     packet_queue.clone(),
                     unused_it_channel.clone(),
+                    cli.timeout,
                 ));
             }
             if *sequential {
