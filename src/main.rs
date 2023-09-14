@@ -1,7 +1,6 @@
 use clap::{Parser, Subcommand};
 use futures::future::join_all;
-use lib::mqtt::test_connection;
-use lib::network::connect_to_broker;
+use lib::mqtt::test_conn_from_address;
 use lib::packets::PacketQueue;
 use lib::process_monitor::start_supervised_process;
 use lib::runtime::{iterations_tracker, run_thread};
@@ -60,8 +59,7 @@ async fn main() -> color_eyre::Result<()> {
             }
             start_supervised_process(sender, cli.broker_command).await?;
             let address = cli.target.clone();
-            let mut stream = connect_to_broker(&cli.target).await?;
-            test_connection(&mut stream).await?;
+            test_conn_from_address(&address).await?;
             info!("Connection established, starting fuzzing!");
             let mut rng = thread_rng();
             let _ = fs::create_dir("./threads").await;
@@ -95,20 +93,7 @@ async fn main() -> color_eyre::Result<()> {
             let mut files = fs::read_dir("./threads")
                 .await
                 .expect("Failed to find threads folder. Cannot Replay");
-            let mut filtered_files = vec![];
-            trace!(
-                "Found files: {:?} in folder {:?}",
-                files,
-                std::env::current_dir()
-            );
-
-            while let Some(entry) = files.next_entry().await? {
-                let path = entry.path();
-                let path_str = path.to_string_lossy().to_string();
-                if path_str.starts_with("./threads/fuzzing_") && path_str.ends_with(".txt") {
-                    filtered_files.push(path_str);
-                }
-            }
+            let mut filtered_files = collect_threads().await;
             trace!("Found {} files", filtered_files.len());
             let (sender, receiver) = tokio::sync::broadcast::channel::<()>(1);
             let mut subscribers = vec![];
@@ -116,9 +101,7 @@ async fn main() -> color_eyre::Result<()> {
                 subscribers.push(sender.subscribe());
             }
             start_supervised_process(sender, cli.broker_command).await?;
-            let mut stream = connect_to_broker(&cli.target).await?;
-            test_connection(&mut stream).await?;
-            debug!("Connection established");
+            test_conn_from_address(&cli.target).await?;
             debug!("Starting replay with {} seeds", filtered_files.len());
             let mut threads = vec![];
             let unused_it_channel = mpsc_channel::<u64>(filtered_files.len()).0;
@@ -152,4 +135,25 @@ async fn main() -> color_eyre::Result<()> {
         }
     }
     Ok(())
+}
+
+async fn collect_threads() -> Vec<String> {
+    let mut files = fs::read_dir("./threads")
+        .await
+        .expect("Failed to find threads folder. Cannot Replay");
+    let mut filtered_files = vec![];
+    trace!(
+        "Found files: {:?} in folder {:?}",
+        files,
+        std::env::current_dir()
+    );
+
+    while let Ok(Some(entry)) = files.next_entry().await {
+        let path = entry.path();
+        let path_str = path.to_string_lossy().to_string();
+        if path_str.starts_with("./threads/fuzzing_") && path_str.ends_with(".txt") {
+            filtered_files.push(path_str);
+        }
+    }
+    filtered_files
 }

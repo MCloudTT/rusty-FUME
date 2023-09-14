@@ -1,4 +1,5 @@
 use crate::markov::ByteStream;
+use crate::network::connect_to_broker;
 use crate::packets::{PacketQueue, Packets};
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,13 +38,19 @@ pub(crate) fn generate_pingreq_packet() -> [u8; 2] {
     [192, 0]
 }
 
-pub async fn test_connection(stream: &mut impl ByteStream) -> color_eyre::Result<()> {
+pub async fn test_conn_from_address(address: &str) -> color_eyre::Result<()> {
+    let mut stream = connect_to_broker(address).await?;
+    test_connection(&mut stream).await?;
+    Ok(())
+}
+
+async fn test_connection(stream: &mut impl ByteStream) -> color_eyre::Result<()> {
     stream
         .write_all(generate_connect_packet().as_slice())
         .await?;
     let mut buf = [0; 1024];
     let _ = timeout(Duration::from_secs(1), stream.read(&mut buf)).await;
-    debug!("Received Packet hex encoded: {:?}", hex::encode(buf));
+    debug!("Connection established");
     Ok(())
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -7,10 +7,8 @@ use tokio::sync::oneshot::channel;
 use tokio::time::{sleep, timeout};
 use tracing::{debug, info};
 
-// TODO: How do the tasks ask if the server has exited? And better yet, how do they get the message back?
 // TODO: Also, how do the tasks know when it has caused new stdout/stderr output?
 // TODO: Allow the user to specify where to write the stdout/stderr of the monitored process. Maybe gzip compress it?
-// TODO: Ask threads what their last packets were and dump it.
 /// Start the broker process and monitor it. If it crashes, we stop our execution.
 pub async fn start_supervised_process(
     sender: Sender<()>,
