@@ -48,8 +48,11 @@ Currently, the Windows build is failing in the ci, however i've only tested this
 ## 🏆 Trophies
 All bugs found with this software. If you find a bug using rusty-FUME, please open an issue and I'll add it to the list once it is patched.
 - [FlashMQ Null pointer dereference](https://github.com/halfgaar/FlashMQ/commit/eb3acf88771af3eeddf086e4c9dc51d703456eee)
+- [Data race in nanomq](https://github.com/emqx/nanomq/issues/1411)
 
-
+## Problems to fix
+- [ ] When the Program under Test(PuT) prints to stdout/stderr much, rusty-FUME will run out of memory eventually
+- [ ] It performs comparatively poorly with brokers like [Mosquitto](https://mosquitto.org/)
 
 ## Credits
 - [FUME: Fuzzing Message Queuing Telemetry Transport Brokers](https://ieeexplore.ieee.org/abstract/document/9796755)
