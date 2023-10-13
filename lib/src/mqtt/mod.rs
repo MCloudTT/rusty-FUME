@@ -38,8 +38,8 @@ pub(crate) fn generate_pingreq_packet() -> [u8; 2] {
     [192, 0]
 }
 
-pub async fn test_conn_from_address(address: &str) -> color_eyre::Result<()> {
-    let mut stream = connect_to_broker(address).await?;
+pub async fn test_conn_from_address(address: &str, timeout: u16) -> color_eyre::Result<()> {
+    let mut stream = connect_to_broker(address, timeout).await?;
     test_connection(&mut stream).await?;
     Ok(())
 }

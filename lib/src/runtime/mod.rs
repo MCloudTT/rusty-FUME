@@ -29,7 +29,7 @@ pub async fn run_thread(
         let mut counter: u64 = 0;
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
         while counter < iterations {
-            let new_stream = connect_to_broker(&address.clone()).await;
+            let new_stream = connect_to_broker(&address.clone(), timeout).await;
             if new_stream.is_err() {
                 // Workaround for connections not being closed fast enough. See https://stackoverflow.com/questions/76238841/cant-assign-requested-address-in-request
                 error!(

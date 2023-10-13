@@ -23,11 +23,16 @@ pub use tcp::*;
 #[cfg(feature = "tcp")]
 mod tcp {
     use super::*;
+    use std::time::Duration;
     use tokio::net::{TcpStream, ToSocketAddrs};
 
-    pub async fn connect_to_broker(address: impl ToSocketAddrs) -> Result<TcpStream> {
-        let tcpstream = TcpStream::connect(address).await?;
-        Ok(tcpstream)
+    pub async fn connect_to_broker(address: impl ToSocketAddrs, timeout: u16) -> Result<TcpStream> {
+        let tcp_stream = tokio::time::timeout(
+            Duration::from_millis(timeout as u64),
+            TcpStream::connect(address),
+        )
+        .await;
+        Ok(tcp_stream??)
     }
 }
 

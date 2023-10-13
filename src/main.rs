@@ -29,7 +29,6 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum SubCommands {
-    // TODO: Do Fuzzing args like threads, chances etc
     Fuzz {
         #[arg(short, long, default_value_t = 100)]
         threads: u64,
@@ -59,7 +58,7 @@ async fn main() -> color_eyre::Result<()> {
             }
             start_supervised_process(sender, cli.broker_command).await?;
             let address = cli.target.clone();
-            test_conn_from_address(&address).await?;
+            test_conn_from_address(&address, cli.timeout).await?;
             info!("Connection established, starting fuzzing!");
             let mut rng = thread_rng();
             let _ = fs::create_dir("./threads").await;
@@ -101,7 +100,7 @@ async fn main() -> color_eyre::Result<()> {
                 subscribers.push(sender.subscribe());
             }
             start_supervised_process(sender, cli.broker_command).await?;
-            test_conn_from_address(&cli.target).await?;
+            test_conn_from_address(&cli.target, cli.timeout).await?;
             debug!("Starting replay with {} seeds", filtered_files.len());
             let mut threads = vec![];
             let unused_it_channel = mpsc_channel::<u64>(filtered_files.len()).0;
