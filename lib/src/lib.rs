@@ -21,7 +21,7 @@
 use crate::markov::MAX_PACKETS;
 use crate::packets::PacketQueue;
 use clap::{Parser, Subcommand};
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -35,7 +35,6 @@ pub mod runtime;
 // TODO: Clean up main
 // TODO: Try fuzzing a basic mongoose server?
 // TODO: Fuzz mosquitto compiled with sanitizers
-// TODO: Lib-split to allow benchmarking
 
 /// Struct to serialize threads once they are done(aka the broker has crashed).
 #[derive(Serialize, Deserialize, Debug)]

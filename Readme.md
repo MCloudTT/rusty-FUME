@@ -36,7 +36,7 @@ That being said, it works fine on my local machine. I recommend running the foll
 ```
 sudo sysctl -w net.ipv4.tcp_fin_timeout=5
 sudo sysctl -w net.ipv4.tcp_tw_reuse=1
-sysctl -w net.ipv4.ip_local_port_range="1024 65535"
+sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535"
 ```
 
 ## Contributing
